@@ -17,16 +17,52 @@ in total, well inside the caps.
 
 ## Quick start
 
+Two stacks, sharing a base compose file:
+
+| | Web server | TLS | Litestream prefix |
+|---|---|---|---|
+| `./run.sh dev` | nginx on `$HTTP_PORT` (8080) | none | `LITESTREAM_DEV_S3_PREFIX` |
+| `./run.sh prod` | Caddy on 80/443 | automatic (Let's Encrypt) | `LITESTREAM_S3_PREFIX` |
+
 ```bash
-cp .env.example .env      # fill in AWS_REGION / S3_BUCKET (or leave S3 blank)
-./run.sh up               # builds, checks the memory budget, starts everything
-./run.sh logs worker      # watch the first scrape
+sudo scripts/setup-swap.sh   # once per host; run.sh refuses to start without swap
+cp .env.example .env         # fill in AWS_REGION / S3_BUCKET (or leave S3 blank)
+./run.sh dev                 # or: ./run.sh prod
+docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f worker
 ```
 
-Then open <http://localhost>. `RUN_ON_START=true` means the first scrape begins
-immediately rather than waiting for midnight.
+Dev serves on <http://localhost:8080>. `RUN_ON_START=true` means the first scrape
+begins immediately rather than waiting for midnight.
 
-Without Docker:
+For prod, set `SITE_ADDRESS` to your domain and `ACME_EMAIL` to your address.
+Caddy issues a certificate on first request, which needs **ports 80 and 443 both
+reachable from the internet** — 80 is not optional, it is how the ACME challenge
+is answered. Set `SITE_ADDRESS=:80` to skip TLS entirely (e.g. behind a load
+balancer that already terminates it).
+
+### Is run.sh mandatory?
+
+No. It is a convenience wrapper around three things that are easy to forget, and
+you can always drive compose directly:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+What you give up by doing that:
+
+1. **Sequential builds.** `docker compose build` builds services in *parallel* by
+   default. On a 1 GiB box that means several `pip install` runs at once, which
+   is the usual cause of an OOM-killed deploy. `run.sh` builds one at a time.
+2. **The swap check.** Without swap, an OOM takes whatever is largest — often
+   sshd, which locks you out of the instance you were deploying to.
+3. **Picking the right compose file pair**, so dev never replicates over the
+   production Litestream prefix.
+
+None of that is magic; if you would rather run the compose command yourself, do
+the builds one service at a time.
+
+### Without Docker
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
@@ -39,57 +75,76 @@ To see the UI before any real data exists:
 `python scripts/seed.py --days 150 --reset` fills the database with synthetic rows
 (companies named `Example …`, URLs on `example.com`).
 
-## Commands
+## Common operations
 
-| Command | What it does |
-|---|---|
-| `./run.sh up` | Build, verify the memory budget, start |
-| `./run.sh status` | Container state plus live memory use |
-| `./run.sh logs [svc]` | Follow logs |
-| `./run.sh scrape [country]` | Run one scrape now |
-| `./run.sh forecast` | Re-fit the models without scraping |
-| `./run.sh seed [days]` | Synthetic data for a UI preview |
-| `./run.sh backup` | Push the SQLite file to S3 now |
-| `./run.sh swap` | Add a 2 GiB host swapfile (asks first) |
-| `./run.sh nuke` | Delete containers **and** all collected data (asks first) |
+`run.sh` deliberately does only build-and-deploy. Everything else is a plain
+compose command — set `C` once and the rest are short:
+
+```bash
+C="docker compose -f docker-compose.yml -f docker-compose.dev.yml"   # or .prod.yml
+
+$C ps                                             # state
+$C logs -f worker                                 # follow the scraper
+docker stats --no-stream $($C ps -q)              # live memory vs the caps
+$C exec worker python -m common.pipeline --country india   # scrape now
+$C exec worker python -m common.pipeline --forecast-only   # refit models only
+$C exec worker python /app/scripts/seed.py --days 150 --reset   # synthetic data
+$C exec db-replicate litestream snapshots /data/jobs.db    # replication status
+$C down                                           # stop (keeps the data volume)
+$C down -v                                        # stop AND delete all data
+```
 
 `python tests/test_core.py` runs the test suite offline — job boards are stubbed.
 
 ## Architecture
 
 ```
-                       ┌────── worker (Debian slim, 512 MiB cap) ───────┐
-  job boards  ────────▶│ scheduler → JobSpy → SQLite → ARIMA → S3       │
-  indeed / naukri      └────────────────────┬───────────────────────────┘
-  linkedin / glassdoor                      │ /data/jobs.db  (docker volume)
-  google                                    ▼
-                       ┌───────── api (Alpine, 192 MiB cap) ────────────┐
-                       │ FastAPI, read-only. No pandas, no numpy.       │
-                       └────────────────────┬───────────────────────────┘
-                                            ▼
-                       ┌───────── web (Alpine, 32 MiB cap) ─────────────┐
-                       │ nginx: static page + /api reverse proxy        │
-                       └────────────────────────────────────────────────┘
+                    ┌────── worker (Debian slim, 512 MiB) ──────┐
+  job boards ──────▶│ scheduler → JobSpy → SQLite → ARIMA → S3  │
+  indeed            └───────────────────┬──────────────────────-┘
+  linkedin                              │ /data/jobs.db  (docker volume)
+  naukri              ┌─────────────────┼─────────────────┐
+                      ▼                                   ▼
+       ┌────── api (Alpine, 160 MiB) ─────┐   ┌── db-replicate (48 MiB) ──┐
+       │ FastAPI, read-only.              │   │ Litestream → S3, every    │
+       │ No pandas, no numpy.             │   │ LITESTREAM_SYNC_INTERVAL  │
+       └─────────────────┬────────────────┘   └───────────────────────────┘
+                         ▼
+     dev  ┌── web (nginx, Alpine, 32 MiB) ──┐   plain HTTP on $HTTP_PORT
+     prod ┌── caddy (Alpine, 64 MiB) ───────┐   automatic HTTPS on 80/443
+          │ static page + /api reverse proxy │
+          └──────────────────────────────────┘
 ```
+
+`docker-compose.yml` holds everything above except the web server; the dev and prod
+override files each add one. They are never used alone — `run.sh` picks the pair.
 
 The worker owns the database; the API only reads it (`file:…?mode=ro`). The scheduler
 runs the pipeline as a **child process** so pandas' arena memory is returned to the OS
 on exit — the container idles around 20 MiB between runs instead of holding the peak.
+
+A fourth container, `db-restore`, runs once at startup and exits. `api` and `worker`
+both wait on it via `service_completed_successfully`, so nothing opens the database
+until Litestream has had the chance to pull a replica down. That ordering is what
+makes a replaced instance come back with its history rather than an empty chart.
 
 ### Why the memory numbers are what they are
 
 | Service | Cap | Measured | Why |
 |---|---|---|---|
 | `worker` | 512 MiB | 131 MiB | During an active scrape. Idles far below it. |
-| `api` | 192 MiB | 39 MiB | FastAPI + uvicorn, one process, no scientific stack. |
-| `web` | 32 MiB | 12 MiB | nginx serving four static files. |
-| **Total** | **736 MiB** | **181 MiB** | Leaves ~290 MiB on a 1 GB box for kernel, dockerd, sshd. |
+| `api` | 160 MiB | 39 MiB | FastAPI + uvicorn, one process, no scientific stack. |
+| `db-replicate` | 48 MiB | — | Litestream tailing the WAL. |
+| `web` (dev) | 32 MiB | 12 MiB | nginx serving four static files. |
+| `caddy` (prod) | 64 MiB | — | nginx plus TLS termination and ACME. |
+| **dev total** | **752 MiB** | | Leaves ~270 MiB on a 1 GB box. |
+| **prod total** | **784 MiB** | | Leaves ~240 MiB. |
+
+`db-restore` is capped at 128 MiB but exits before the rest are running, so it does
+not count toward either total. Measured figures are from a live scrape; the ones
+marked — are the containers added after that run and are not yet measured.
 
 Image sizes: worker 410 MB, api 166 MB, web 74 MB.
-
-`./run.sh up` sums every `mem_limit` in `docker-compose.yml` and aborts if the total
-exceeds `MEM_BUDGET_MB` (default 800). It also warns when the host has no swap —
-worth adding on a micro, because a scrape spikes.
 
 ### Why the worker is not Alpine
 
@@ -238,7 +293,8 @@ not the chance that the model is wrong.
 
 ## Storage and S3
 
-Local SQLite is the working store. If `S3_BUCKET` is set, every run also publishes:
+Local SQLite is the working store. If `S3_BUCKET` is set, every run also publishes
+the derived JSON, and Litestream replicates the database itself continuously:
 
 ```
 s3://$S3_BUCKET/$S3_PREFIX/
@@ -246,21 +302,60 @@ s3://$S3_BUCKET/$S3_PREFIX/
   series/{country}.json         daily series + forecast + summary
   latest/{country}.json         current listings
   raw/{country}/YYYY-MM-DD.json.gz   that night's full scrape
-  db/jobs.db.gz                 SQLite backup
+
+s3://$S3_BUCKET/$LITESTREAM_S3_PREFIX/      # prod: the live database replica
+s3://$S3_BUCKET/$LITESTREAM_DEV_S3_PREFIX/  # dev
 ```
 
-A fresh instance calls `restore_db()` on startup and rebuilds from the backup, so
-replacing the box does not lose history. With `S3_BUCKET` empty the whole S3 layer
-degrades to no-ops and everything still works locally.
+With `S3_BUCKET` empty the whole S3 layer degrades to no-ops — `db-restore` exits
+cleanly, `db-replicate` idles, and everything still works on local SQLite.
+
+### Backups: Litestream
+
+`db-replicate` runs [Litestream](https://litestream.io), which tails the SQLite WAL
+and ships frames to S3 every `LITESTREAM_SYNC_INTERVAL` (5m). Worst-case data loss
+is one interval, rather than one night with a nightly file copy. A full snapshot is
+taken daily and a week is retained, so a restore can land at any point in that window.
+
+This **replaces** the nightly gzip-the-whole-file backup that `s3store.backup_db()`
+does. The compose files set `DB_BACKUP_TO_S3=false` on the worker for that reason:
+running both uploads the same data twice and leaves two restore paths that can
+disagree about which is current. Set it `true` only if you run the pipeline
+standalone, without the `db-replicate` container.
+
+**Restoring by hand** (the automatic path is `db-restore`, which only fires when
+there is no local database):
+
+```bash
+C="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+$C stop worker api                       # nothing may write during a restore
+$C run --rm db-replicate litestream restore -o /data/jobs.db /data/jobs.db
+$C start api worker
+```
+
+Add `-timestamp 2026-09-05T00:00:00Z` to restore to a point in time.
+`litestream snapshots /data/jobs.db` lists what is available.
+
+**Dev and prod must not share a prefix.** They are separate keys in `.env`, and the
+compose override files wire the right one in. Pointing both at the same path means
+two Litestream instances replicating different databases over each other.
+
+**Version pin.** The image is pinned to `litestream:0.3.13` and `litestream/litestream.yml`
+is written in 0.3 syntax. Litestream 0.5 rewrote the config — `replicas:` (list) became
+`replica:` (single), `bucket`/`path`/`region` collapsed into one `url:`, and
+`sync-interval` was replaced by compaction `levels:`. Bumping the tag without
+rewriting that file will fail to start.
 
 **Credentials.** On EC2, attach an instance role and leave `AWS_ACCESS_KEY_ID` /
-`AWS_SECRET_ACCESS_KEY` blank — boto3 picks the role up automatically. Keys in `.env`
-are for local development. `.env` is gitignored; `.env.example` is the template.
+`AWS_SECRET_ACCESS_KEY` blank — both boto3 and Litestream pick the role up
+automatically. Keys in `.env` are for local development. `.env` is gitignored;
+`.env.example` is the template.
 
-The bucket policy needs `s3:GetObject` and `s3:PutObject` on
-`arn:aws:s3:::BUCKET/PREFIX/*` and `s3:ListBucket` on the bucket. Making the objects
-publicly readable is optional — it is what lets the page's "raw data" links work for
-visitors.
+The bucket policy needs `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` (Litestream
+expires old WAL segments) on `arn:aws:s3:::BUCKET/*`, plus `s3:ListBucket` on the
+bucket. Making the derived JSON publicly readable is optional — it is what lets the
+page's "raw data" links work for visitors. **Do not make the Litestream prefix
+public**; it is your database.
 
 ## Scheduling
 
@@ -334,15 +429,26 @@ chart is reproducible — `tests/test_core.py` pins its behaviour on known title
 ```bash
 sudo yum install -y docker git && sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user && newgrp docker
-git clone <this repo> && cd job-doomers
-cp .env.example .env && $EDITOR .env
-./run.sh swap        # recommended on 1 GB: a scrape spikes
-./run.sh up
+git clone https://github.com/samnayak1/doomers-correct.git && cd doomers-correct
+sudo scripts/setup-swap.sh            # required: run.sh refuses to start without swap
+cp .env.example .env && $EDITOR .env  # set SITE_ADDRESS, ACME_EMAIL, S3_BUCKET
+./run.sh prod
 ```
 
-Open port 80 in the security group. For TLS, put CloudFront or a Caddy/Traefik
-sidecar in front — nginx here serves plain HTTP on purpose, to keep certificate
-renewal out of a 24 MiB container.
+Open **80 and 443** in the security group. Both are needed: 443 serves the site, 80
+answers Caddy's ACME challenge, so certificate issuance fails silently if it is shut.
+Point your domain's A record at the instance before the first `./run.sh prod` — Caddy
+requests a certificate on the first request for `SITE_ADDRESS`, and Let's Encrypt
+rate-limits repeated failures.
+
+Attach an instance role with the S3 permissions above rather than putting keys in
+`.env`. The `caddy_data` volume holds the issued certificates; do not prune it.
+
+## Layout note
+
+`run.sh` is intentionally a build-and-deploy script and nothing else — see
+[Common operations](#common-operations) for the compose one-liners that replaced its
+old subcommands.
 
 ## Caveats
 
@@ -392,7 +498,7 @@ does not use it:
 
 ```bash
 mkdir -p /tmp/dockercfg && echo '{}' > /tmp/dockercfg/config.json
-DOCKER_CONFIG=/tmp/dockercfg ./run.sh up
+DOCKER_CONFIG=/tmp/dockercfg ./run.sh dev
 ```
 
 **`docker: command not found`, or the daemon is unreachable in WSL.**
@@ -400,8 +506,8 @@ Docker Desktop → Settings → Resources → WSL Integration → enable your di
 Apply & Restart. If the socket still does not appear, `wsl --shutdown` from PowerShell
 and reopen the terminal. You want `/var/run/docker.sock` owned by `root:docker`.
 
-**A board returns nothing.** Look for `WARNING no rows from …` in `./run.sh logs
-worker`. Naukri in particular answers HTTP 406 `recaptcha required` from most
+**A board returns nothing.** Look for `WARNING no rows from …` in the worker logs
+(`$C logs -f worker`). Naukri in particular answers HTTP 406 `recaptcha required` from most
 datacentre and many residential IPs — it succeeds at the HTTP level and hands back
 zero rows. Set `PROXIES`, or drop the board with `SITES_INDIA` / `SITES_AUSTRALIA`.
 
@@ -411,19 +517,24 @@ can only reconstruct listings that were still live when we first looked — so t
 is understated and the curve ramps into today. The shaded `RECONSTRUCTED` region marks
 it, and none of it is ever fed to the model.
 
-**The first run takes ~25 minutes for both countries.** Almost all of it is LinkedIn
+**The first run takes ~35 minutes for all three countries.** Almost all of it is LinkedIn
 (~43s per request, its own rate limiting). Set `RUN_ON_START=false` if you would
 rather wait for midnight.
 
 ## Layout
 
 ```
-common/       config, SQLite, JobSpy wrapper, forecasting, S3, pipeline
-worker/       nightly scheduler + Debian-slim image (see "Why the worker is not Alpine")
-api/          FastAPI read-only JSON API + Alpine image
-web/          static page (hand-rolled SVG chart) + nginx image
-lambda/       optional Lambda handler + image
-scripts/      seed data, dev server, Lambda deploy
-tests/        offline test suite
-run.sh        operator script with the memory budget check
+common/                    config, SQLite, JobSpy wrapper, forecasting, S3, pipeline
+worker/                    nightly scheduler + Debian-slim image (see "Why the worker is not Alpine")
+api/                       FastAPI read-only JSON API + Alpine image
+web/                       static page (hand-rolled SVG chart); nginx + Caddy images
+caddy/Caddyfile            production TLS front door
+litestream/litestream.yml  continuous SQLite replication to S3
+lambda/                    optional Lambda handler + image
+scripts/                   seed data, dev server, swap setup, Lambda deploy
+tests/                     offline test suite
+docker-compose.yml         base stack (worker, api, litestream)
+docker-compose.dev.yml     + nginx, dev replication prefix
+docker-compose.prod.yml    + Caddy, prod replication prefix
+run.sh                     build (one service at a time) + deploy
 ```

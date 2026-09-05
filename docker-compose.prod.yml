@@ -1,0 +1,44 @@
+# Production: Caddy with automatic HTTPS, production replication prefix.
+#   ./run.sh prod
+#
+# Set SITE_ADDRESS to your domain in .env. Caddy provisions a Let's Encrypt
+# certificate on first request, which needs ports 80 AND 443 reachable from the
+# internet - 80 is not optional, it is how the ACME challenge is answered.
+services:
+  db-restore:
+    environment:
+      LITESTREAM_PREFIX: ${LITESTREAM_S3_PREFIX:-doomers/database.sqlite}
+  db-replicate:
+    environment:
+      LITESTREAM_PREFIX: ${LITESTREAM_S3_PREFIX:-doomers/database.sqlite}
+
+  caddy:
+    build:
+      context: .
+      dockerfile: web/Dockerfile.caddy
+    image: adc-caddy:latest
+    restart: unless-stopped
+    env_file: [.env]
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"     # HTTP/3
+    volumes:
+      # Certificates live here. Losing this volume means re-issuing on restart,
+      # which Let's Encrypt rate-limits, so do not prune it casually.
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 64m
+    mem_reservation: 24m
+    cpus: 0.5
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+volumes:
+  caddy_data:
+  caddy_config:

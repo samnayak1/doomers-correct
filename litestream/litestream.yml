@@ -1,0 +1,31 @@
+# Continuous replication of the SQLite file to S3.
+#
+# Litestream tails the WAL and ships frames every sync-interval, so worst-case
+# data loss is one interval rather than one night. It replaces the nightly
+# gzip-the-whole-file backup, which is why DB_BACKUP_TO_S3 is false in the
+# compose files — running both uploads the same data twice and leaves you two
+# restore paths that can disagree.
+#
+# This is 0.3.x syntax, matching the pinned image. Litestream 0.5 rewrote the
+# config: `replicas:` (list) became `replica:` (single), bucket/path/region
+# collapsed into one `url: s3://bucket/path`, and sync-interval was replaced by
+# compaction `levels:`. Do not bump the image tag without rewriting this file.
+#
+# ${...} values come from the container environment (see docker-compose.yml).
+dbs:
+  - path: /data/jobs.db
+    replicas:
+      - type: s3
+        bucket: ${S3_BUCKET}
+        path: ${LITESTREAM_PREFIX}
+        region: ${AWS_REGION}
+
+        # How often WAL frames are shipped. This is your recovery point
+        # objective: lose at most this much work if the instance dies.
+        sync-interval: ${LITESTREAM_SYNC_INTERVAL}
+
+        # A full snapshot daily, and keep a week of them plus the WAL between.
+        # Restores can land at any point inside that window. Snapshots are full
+        # copies of the database, so shortening this multiplies storage cost.
+        snapshot-interval: 24h
+        retention: 168h

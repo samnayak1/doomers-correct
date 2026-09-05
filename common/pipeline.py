@@ -70,7 +70,8 @@ def publish(conn, country: str, scrape_date: str, rows_for_s3: list[dict] | None
         })
         s3store.put_json(s3store.key("latest", f"{country}.json"),
                          db.list_jobs(conn, country, limit=1000))
-        s3store.backup_db(config.DB_PATH)
+        if config.DB_BACKUP_TO_S3:
+            s3store.backup_db(config.DB_PATH)
         s3store.write_manifest({
             c: {
                 "label": cfg["label"],
@@ -171,7 +172,10 @@ def run_country(country: str, *, run_day: date | None = None, publish_s3: bool =
 
 
 def run_all(publish_s3: bool = True) -> list[dict]:
-    s3store.restore_db(config.DB_PATH)
+    # A no-op under Litestream, which has already restored the file before this
+    # container was allowed to start (see db-restore in docker-compose.yml).
+    if config.DB_BACKUP_TO_S3:
+        s3store.restore_db(config.DB_PATH)
     return [run_country(c, publish_s3=publish_s3) for c in config.COUNTRIES]
 
 

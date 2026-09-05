@@ -1,0 +1,29 @@
+# Development: nginx, plain HTTP on localhost, dev replication prefix.
+#   ./run.sh dev
+services:
+  db-restore:
+    environment:
+      LITESTREAM_PREFIX: ${LITESTREAM_DEV_S3_PREFIX:-doomers-dev/database.sqlite}
+  db-replicate:
+    environment:
+      LITESTREAM_PREFIX: ${LITESTREAM_DEV_S3_PREFIX:-doomers-dev/database.sqlite}
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: adc-web:latest
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    # nginx forks a worker per CPU; measured at 12 MiB idle on a 2-vCPU box.
+    mem_limit: 32m
+    mem_reservation: 12m
+    cpus: 0.25
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

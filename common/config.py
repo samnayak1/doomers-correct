@@ -30,6 +30,12 @@ AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
 S3_BUCKET = os.environ.get("S3_BUCKET", "")
 S3_PREFIX = os.environ.get("S3_PREFIX", "are-doomers-correct").strip("/")
 
+# Gzip the whole SQLite file to S3 after every run. The compose stack sets this
+# to false because Litestream replicates the same database continuously; running
+# both uploads the data twice and leaves two restore paths that can disagree.
+# Leave it true only if you are running the pipeline without Litestream.
+DB_BACKUP_TO_S3 = _bool("DB_BACKUP_TO_S3", True)
+
 # --- countries -------------------------------------------------------------- #
 # `indeed` is the jobspy `country_indeed` value; `sites` are the boards to hit.
 # `locations` defaults to the country as a whole, and every location is queried
