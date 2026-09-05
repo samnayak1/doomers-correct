@@ -153,6 +153,11 @@ RECONSTRUCT_DAYS = _int("RECONSTRUCT_DAYS", 90)
 FORECAST_UNTIL = os.environ.get("FORECAST_UNTIL", "2027-12-31")
 FORECAST_MIN_POINTS = _int("FORECAST_MIN_POINTS", 7)    # below this: no forecast at all
 ARIMA_MIN_POINTS = _int("ARIMA_MIN_POINTS", 30)         # "first month" -> linear
+# Fit ARIMA on log(1+y): the trend becomes multiplicative (% per month rather
+# than N listings per day) and a negative forecast becomes structurally
+# impossible. Applied to ARIMA only - compounding a slope estimated from two
+# weeks of data over two years is nonsense, so the linear model stays in level
+# space (see `log_space and use_arima` in forecast.forecast_series).
 FORECAST_LOG_SPACE = _bool("FORECAST_LOG_SPACE", True)
 # Damping (Gardner-McKenzie): the trend decays geometrically instead of running
 # forever in a straight line.  Over a 2-year horizon this is the single most
