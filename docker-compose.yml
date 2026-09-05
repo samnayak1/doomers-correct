@@ -1,0 +1,75 @@
+# Sized for a 1 GB EC2 micro. Hard caps below total 736 MB, leaving headroom for
+# the kernel, dockerd and sshd. `./run.sh up` re-checks the arithmetic before
+# starting anything, so an edit here cannot silently blow the budget.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: adc-api:latest
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DATA_DIR: /data
+      DB_PATH: /data/jobs.db
+    volumes:
+      # Mounted read-write on purpose: SQLite in WAL mode must be able to touch
+      # the -shm sidecar even for reads, and a `:ro` mount breaks that with
+      # SQLITE_CANTOPEN. Read-only-ness is enforced where it actually holds -
+      # the API opens the file with `file:...?mode=ro` (see common/db.connect).
+      - data:/data
+    mem_limit: 192m
+    mem_reservation: 64m
+    cpus: 0.75
+    pids_limit: 128
+    logging: *logging
+    expose: ["8000"]
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: adc-web:latest
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    # nginx forks a worker per CPU; measured at 12 MiB idle on a 2-vCPU box, so
+    # 24 MiB left too little headroom under load.
+    mem_limit: 32m
+    mem_reservation: 12m
+    cpus: 0.25
+    pids_limit: 64
+    logging: *logging
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    image: adc-worker:latest
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DATA_DIR: /data
+      DB_PATH: /data/jobs.db
+    volumes:
+      - data:/data
+    # The ceiling a scrape may reach. It idles far below this: the scheduler
+    # spawns the pipeline as a child process and reclaims everything on exit.
+    mem_limit: 512m
+    mem_reservation: 48m
+    cpus: 1.0
+    pids_limit: 128
+    logging: *logging
+
+volumes:
+  data:
