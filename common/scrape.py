@@ -78,7 +78,7 @@ def plan(country: str, run_day: date | None = None) -> list[tuple[str, str, str]
 
     Every run issues exactly the same set of queries. A rotating subset would be
     cheaper, but then the active count would move with the rotation instead of
-    with the market - see the note on ACTIVE_WINDOW_DAYS in config.
+    with the market rather than with the rotation.
     """
     cfg = config.COUNTRIES[country]
     return [(site, term, loc)

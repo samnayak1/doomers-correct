@@ -52,8 +52,7 @@ def series(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1):
     country = config.country_key(country)
     conn = _conn()
     try:
-        s = db.daily_series(conn, country, tech_only=bool(tech),
-                            active_window_days=config.ACTIVE_WINDOW_DAYS)
+        s = db.daily_series(conn, country, tech_only=bool(tech))
         payload = {
             "country": country,
             "label": config.COUNTRIES[country]["label"],
@@ -63,7 +62,6 @@ def series(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1):
             "forecast": db.get_forecast(conn, country) if tech else None,
             "summary": db.summary(conn, country),
             "config": {
-                "active_window_days": config.ACTIVE_WINDOW_DAYS,
                 "forecast_until": config.FORECAST_UNTIL,
                 "arima_min_points": config.ARIMA_MIN_POINTS,
                 "forecast_min_points": config.FORECAST_MIN_POINTS,

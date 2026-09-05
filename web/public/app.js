@@ -37,20 +37,6 @@ function fmtSalary(row) {
   return `${sym}${body}`;
 }
 
-/* ── theme ─────────────────────────────────────────────────────────────── */
-(function theme() {
-  const saved = (() => { try { return localStorage.getItem('theme'); } catch { return null; } })();
-  if (saved) document.documentElement.setAttribute('data-theme', saved);
-  $('theme').addEventListener('click', () => {
-    const cur = document.documentElement.getAttribute('data-theme')
-      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-    const next = cur === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('theme', next); } catch { /* private mode */ }
-    if (lastSeries) renderChart(lastSeries);   // re-read the CSS colour tokens
-  });
-})();
-
 /* ── stat tiles ────────────────────────────────────────────────────────── */
 function renderStats(d) {
   const s = d.summary || {};
@@ -189,27 +175,13 @@ async function loadJobs() {
   }
 }
 
-async function loadDataLinks() {
-  try {
-    const d = await api('/api/data');
-    const p = $('data-links');
-    if (!d.s3) { p.innerHTML = '<strong>Raw data.</strong> S3 publishing is not configured on this deployment.'; return; }
-    const c = d.countries[state.country] || {};
-    p.innerHTML = `<strong>Raw data.</strong> Everything here is public JSON: `
-      + `<a href="${esc(d.manifest)}" target="_blank" rel="noopener">manifest</a>, `
-      + `<a href="${esc(c.series)}" target="_blank" rel="noopener">series</a>, `
-      + `<a href="${esc(c.latest)}" target="_blank" rel="noopener">current listings</a>. `
-      + `Nightly snapshots live under <code>${esc(c.raw_prefix || '')}</code>.`;
-  } catch { /* the section is optional */ }
-}
-
 /* ── wiring ────────────────────────────────────────────────────────────── */
 function reloadAll() {
   state.offset = 0;
   const u = new URL(location);
   u.searchParams.set('country', state.country);
   history.replaceState(null, '', u);
-  loadSeries(); loadJobs(); loadDataLinks();
+  loadSeries(); loadJobs();
 }
 
 $('country').addEventListener('change', (e) => { state.country = e.target.value; state.site = ''; reloadAll(); });

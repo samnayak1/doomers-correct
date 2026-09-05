@@ -1,4 +1,9 @@
-"""One end-to-end run: scrape -> SQLite -> forecast -> S3."""
+"""
+1.scrape data
+2. fit ARIMA model to active-listings series
+3. store data and forecast in SQLite
+
+"""
 
 from __future__ import annotations
 
@@ -19,17 +24,14 @@ def refresh_forecast(conn, country: str, *, until: str | None = None) -> dict | 
     the chart is survivorship-biased (older listings we never saw have already
     expired), so fitting on it would manufacture a growth trend that is not real.
     """
-    series = db.daily_series(
-        conn, country,
-        active_window_days=config.ACTIVE_WINDOW_DAYS,
-    )
+    series = db.daily_series(conn, country)
     dates, values = db.fit_window(series, max_days=config.FORECAST_FIT_DAYS)
     if len(dates) < config.FORECAST_MIN_POINTS:
         log(f"[forecast] {country}: {len(dates)} observed day(s), need "
             f"{config.FORECAST_MIN_POINTS} - skipping")
         return None
 
-    from .forecast import forecast_series  # lazy: pulls in numpy
+    from .forecast import forecast_series  
     payload = forecast_series(
         dates, values,
         until or config.FORECAST_UNTIL,
@@ -60,8 +62,7 @@ def publish(conn, country: str, scrape_date: str, rows_for_s3: list[dict] | None
                 "count": len(rows_for_s3), "jobs": rows_for_s3,
             }, cache_seconds=86400)
 
-        series = db.daily_series(conn, country,
-                                 active_window_days=config.ACTIVE_WINDOW_DAYS)
+        series = db.daily_series(conn, country)
         s3store.put_json(s3store.key("series", f"{country}.json"), {
             "country": country,
             "series": series,
@@ -121,13 +122,9 @@ def run_country(country: str, *, run_day: date | None = None, publish_s3: bool =
         conn.close()
         return {"country": country, "ok": False, "note": note}
 
-    series = db.daily_series(conn, country,
-                            active_window_days=config.ACTIVE_WINDOW_DAYS,
-                            today=scrape_date)
+    series = db.daily_series(conn, country, today=scrape_date)
     active_total = series["values"][-1] if series["values"] else 0
-    all_series = db.daily_series(conn, country, tech_only=False,
-                                 active_window_days=config.ACTIVE_WINDOW_DAYS,
-                                 today=scrape_date)
+    all_series = db.daily_series(conn, country, tech_only=False, today=scrape_date)
     remote_active = conn.execute(
         "SELECT COUNT(*) FROM jobs WHERE country=? AND is_tech=1 AND is_remote=1 AND last_seen>=?",
         (country, scrape_date),

@@ -61,8 +61,7 @@ def seed(country: str, days: int, base: int, drift: float, rng: random.Random) -
             (day.isoformat(), country, (day - timedelta(days=45)).isoformat()))
         conn.commit()
 
-        s = db.daily_series(conn, country, today=day.isoformat(),
-                            active_window_days=config.ACTIVE_WINDOW_DAYS)
+        s = db.daily_series(conn, country, today=day.isoformat())
         db.record_snapshot(conn, country, day.isoformat(), ran_at=f"{day}T00:05:00Z",
                            duration_sec=rng.uniform(200, 500), rows_seen=n_new * 4,
                            new_jobs=n_new, tech_jobs=n_new,

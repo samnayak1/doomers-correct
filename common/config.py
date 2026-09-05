@@ -59,17 +59,12 @@ def _sites(env_name: str, default: list[str]) -> list[str]:
 COUNTRIES: dict[str, dict] = {
     "india": {
         "label": "India",
-        # `label` names the dropdown option; `prose` is the form that reads
-        # correctly inside a sentence ("listings in the United States").
+
         "prose": "India",
         "indeed": "India",
         "currency": "INR",
         "locations": _locs("LOCATIONS_INDIA", ["India"]),
-        # Naukri is the biggest India board but is aggressive about bot
-        # detection: it answers 406 "recaptcha required" from most datacentre
-        # and many residential IPs, returning zero rows without erroring. It is
-        # kept in the defaults because it is the most valuable India source and
-        # proxies fix it - watch the per-board warning in the run log.
+
         "sites": _sites("SITES_INDIA", ["indeed", "naukri", "linkedin"]),
     },
     "australia": {
@@ -86,16 +81,13 @@ COUNTRIES: dict[str, dict] = {
         "indeed": "USA",
         "currency": "USD",
         "locations": _locs("LOCATIONS_USA", ["United States"]),
-        # ZipRecruiter is the obvious extra US board and is deliberately not a
-        # default: it answers 403 "forbidden" to unproxied traffic. Glassdoor and
-        # Google are excluded everywhere for the same class of reason - see the
-        # board table in the README. Re-enable any of them via SITES_USA.
+
         "sites": _sites("SITES_USA", ["indeed", "linkedin"]),
     },
 }
 DEFAULT_COUNTRY = os.environ.get("DEFAULT_COUNTRY", "india")
 
-# --- what counts as a "tech" role ------------------------------------------- #
+
 SEARCH_TERMS = [t.strip() for t in os.environ.get("SEARCH_TERMS", ",".join([
     "software engineer", "backend developer", "frontend developer",
     "full stack developer", "data engineer", "data scientist",
@@ -104,8 +96,7 @@ SEARCH_TERMS = [t.strip() for t in os.environ.get("SEARCH_TERMS", ",".join([
     "cloud engineer", "security engineer",
 ])).split(",") if t.strip()]
 
-# Titles matching this are counted in the "tech" series.  Kept as an explicit,
-# auditable regex rather than a model, so the number on the chart is reproducible.
+
 TECH_TITLE_PATTERN = os.environ.get("TECH_TITLE_PATTERN", r"""
     software|developer|engineer|programmer|sde\b|swe\b|devops|sre\b|
     data\s*(scientist|engineer|analyst)|machine\s*learning|\bml\b|\bai\b|
@@ -115,7 +106,7 @@ TECH_TITLE_PATTERN = os.environ.get("TECH_TITLE_PATTERN", r"""
     architect|\bdba\b|database|python|java\b|javascript|typescript|golang|
     react|node\.?js|kubernetes|\baws\b|azure|\bgcp\b
 """)
-# Explicitly excluded even if the title matches above (sales/recruiting/etc).
+
 TECH_TITLE_EXCLUDE = os.environ.get("TECH_TITLE_EXCLUDE", r"""
     sales|recruit|talent\s*acquisition|business\s*development|marketing|
     account\s*(manager|executive)|customer\s*success|teacher|trainer|faculty|
@@ -123,25 +114,12 @@ TECH_TITLE_EXCLUDE = os.environ.get("TECH_TITLE_EXCLUDE", r"""
     chemical\s*engineer|site\s*engineer|safety\s*engineer|nurse|driver
 """)
 
-# --- scrape behaviour ------------------------------------------------------- #
 RESULTS_WANTED = _int("RESULTS_WANTED", 60)          # per (site, term, location)
 HOURS_OLD = _int("HOURS_OLD", 72)                    # only recent postings
 SCRAPE_PAUSE_SEC = _float("SCRAPE_PAUSE_SEC", 3.0)   # politeness delay between calls
 KEEP_DESCRIPTIONS = _bool("KEEP_DESCRIPTIONS", False)  # descriptions are ~90% of the bytes
 PROXIES = [p.strip() for p in os.environ.get("PROXIES", "").split(",") if p.strip()] or None
 
-# --- series construction ---------------------------------------------------- #
-# A listing counts as "active" on day t if t is inside its [start, end] window.
-# A listing is counted as active on the days between the first and last run that
-# saw it, capped at this many days in case a board leaves something up forever.
-#
-# There is deliberately NO trailing grace period. Extending each listing a few
-# days past the last sighting looks harmless, but it biases the recent end of the
-# curve: for any day t, a listing qualifies if last_seen + grace >= t, so older
-# days always accumulate more qualifying listings than recent ones and the last
-# `grace` days slope downward no matter what the market does. Gaps *between*
-# sightings need no grace - an interval spanning them already covers them.
-ACTIVE_WINDOW_DAYS = _int("ACTIVE_WINDOW_DAYS", 150)
 
 # How far back a listing's posting date may pull the curve before we first saw
 # it. Job boards carry listings with very old posting dates - live Indeed results

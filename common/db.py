@@ -177,7 +177,6 @@ def daily_series(
     country: str,
     *,
     tech_only: bool = True,
-    active_window_days: int | None = None,
     reconstruct_days: int | None = None,
     today: str | None = None,
 ) -> dict:
@@ -188,14 +187,10 @@ def daily_series(
         start = min(date_posted, first_seen)          # when the listing went live
         start = max(start, first_seen - reconstruct)  # bound the pre-launch tail
         end   = min(last_seen, today)                 # when we last saw it
-        start = max(start, end - active_window)       # cap a listing's lifetime
 
-    The last two lines matter more than they look. Boards carry postings with
-    very old dates - a listing dated 2024 can still be live today - so capping
-    the window against `start` would end its interval in 2024 and credit it to
-    days we never observed, while *not* counting it today, when we actually saw
-    it. The cap belongs on the start, so the interval always ends where the
-    evidence does.
+    The second line matters more than it looks. Boards carry postings with very
+    old dates - a listing dated 2024 can still be live today - and without that
+    bound one stale row stretches the chart across years nobody observed.
 
     Counting overlaps per day gives the curve.  Using `date_posted` means the
     chart has real shape from the very first scrape instead of a single dot -
@@ -205,7 +200,6 @@ def daily_series(
     """
     # Defaults come from config, never from literals here: a caller that omits
     # them must get the same curve the pipeline recorded, not a different one.
-    active_window_days = config.ACTIVE_WINDOW_DAYS if active_window_days is None else active_window_days
     reconstruct_days = config.RECONSTRUCT_DAYS if reconstruct_days is None else reconstruct_days
 
     today_d = date.fromisoformat(today) if today else date.today()
@@ -236,9 +230,6 @@ def daily_series(
         except (TypeError, ValueError):
             ls = fs
         end = min(ls, today_d)
-        # A listing counts for at most `active_window_days` before we last saw
-        # it - capped on the start, never by truncating the end.
-        start = max(start, end - timedelta(days=active_window_days))
         if end < start:
             continue
         a, b = start.toordinal(), end.toordinal()

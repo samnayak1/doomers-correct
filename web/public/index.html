@@ -20,8 +20,6 @@
         extrapolated to 31&nbsp;December&nbsp;2027. Decide for yourself.
       </p>
     </div>
-    <div class="spacer"></div>
-    <button class="theme-toggle" id="theme" type="button" aria-label="Switch colour theme">Theme</button>
   </header>
 
   <p class="credit">
@@ -109,17 +107,12 @@
   </div>
 
   <details class="method">
-    <summary>Method, caveats and raw data</summary>
+    <summary>Method and caveats</summary>
     <p><strong>Collection.</strong> Every night at midnight a worker queries public job boards
     through <a href="https://github.com/speedyapply/JobSpy" rel="noopener noreferrer" target="_blank">JobSpy</a>
     and stores what it finds in SQLite. Every run issues the same set of queries — sampling a
     rotating subset would be cheaper, but then the count would move with the rotation rather than
     with the market. Every run is also written to S3 as gzipped JSON.</p>
-    <p><strong>What "active" means.</strong> A listing is counted as active on every day between the
-    first and last run that saw it: the window opens at the posting date (or the first day we saw it,
-    whichever is earlier) and closes on the last day we saw it, capped at
-    <code>ACTIVE_WINDOW_DAYS</code>. There is deliberately no grace period past the last sighting —
-    that would make the most recent days slope downward on their own, whatever the market did.</p>
     <p><strong>The shaded region.</strong> Days before our first scrape are reconstructed from posting
     dates. We can only reconstruct listings that were <em>still live</em> when we first looked, so that
     stretch understates the past and slopes upward artificially. It is shown for context and is
@@ -129,10 +122,6 @@
     fitted by Hannan–Rissanen and selected by AICc, on a trailing window of recent days. It is fitted
     in log space, so the trend is multiplicative and the forecast cannot go negative, and the trend is
     damped so it flattens instead of running off the chart. The band is a 95% prediction interval.</p>
-    <p><strong>This is an extrapolation, not a prediction.</strong> It assumes the recent pattern
-    simply continues. It knows nothing about hiring cycles, funding, policy or layoffs, and the
-    interval only covers the model's own noise — not the chance the model is wrong.</p>
-    <p id="data-links"></p>
   </details>
 
   <footer>
