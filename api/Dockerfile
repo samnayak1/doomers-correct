@@ -1,4 +1,3 @@
-# The API only reads SQLite, so it deliberately has no numpy/pandas/jobspy.
 FROM python:3.12-alpine
 
 ENV PYTHONUNBUFFERED=1 \

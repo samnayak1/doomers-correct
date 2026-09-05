@@ -1,9 +1,6 @@
-# Base stack: everything that is identical in dev and prod.
-#
-# Never used alone - always with an override that adds the web server:
+#run with
 #   dev  (nginx, plain HTTP on localhost) : -f docker-compose.yml -f docker-compose.dev.yml
 #   prod (Caddy, automatic HTTPS)         : -f docker-compose.yml -f docker-compose.prod.yml
-# ./run.sh picks the pair for you.
 
 x-logging: &logging
   driver: json-file
