@@ -1,43 +1,47 @@
 /* ── Tokens ────────────────────────────────────────────────────────────────
-   Chart colours come from a validated categorical palette (blue = observed,
-   orange = forecast). Both modes are selected steps, not an automatic flip. */
+   Warm editorial palette. Series colours were validated with the dataviz
+   validator against these exact surfaces, in both modes:
+     light  teal #0d9488 / rust #c2410c  on #fffcf5
+     dark   teal #14a08d / rust #d4682f  on #1c1a15
+   All six checks pass. Do not nudge these by eye - re-run the validator. */
 :root {
   color-scheme: light;
-  --bg:            #f7f7f5;
-  --surface-1:     #fcfcfb;
-  --surface-2:     #f0efec;
-  --border:        #dedcd6;
-  --border-strong: #c4c1b8;
-  --text-primary:  #0b0b0b;
-  --text-secondary:#52514e;
-  --text-muted:    #83817a;
-  --series-1:      #2a78d6;  /* observed */
-  --series-2:      #eb6834;  /* forecast */
-  --band:          rgba(235, 104, 52, 0.14);
-  --recon:         rgba(131, 129, 122, 0.10);
-  --good:          #008300;
-  --bad:           #e34948;
-  --radius: 10px;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --bg:            #f4efe4;
+  --surface-1:     #fffcf5;
+  --surface-2:     #efe9dc;
+  --border:        #e2dacb;
+  --border-strong: #c2b6a0;
+  --text-primary:  #1c1813;
+  --text-secondary:#5a5145;
+  --text-muted:    #8a7f6e;
+  --series-1:      #0d9488;  /* observed */
+  --series-2:      #c2410c;  /* forecast */
+  --band:          rgba(194, 65, 12, 0.13);
+  --recon:         rgba(138, 127, 110, 0.12);
+  --good:          #15803d;
+  --bad:           #b3261e;
+  --radius: 8px;
+  --serif: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+  --sans:  ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono:  ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --bg:            #131312;
-    --surface-1:     #1a1a19;
-    --surface-2:     #232322;
-    --border:        #333331;
-    --border-strong: #4a4a47;
-    --text-primary:  #ffffff;
-    --text-secondary:#c3c2b7;
-    --text-muted:    #8b8a82;
-    --series-1:      #3987e5;
-    --series-2:      #d95926;
-    --band:          rgba(217, 89, 38, 0.18);
-    --recon:         rgba(195, 194, 183, 0.07);
-    --good:          #4bb04b;
-    --bad:           #e66767;
+    --bg:            #14120d;
+    --surface-1:     #1c1a15;
+    --surface-2:     #26231c;
+    --border:        #35312a;
+    --border-strong: #4f4940;
+    --text-primary:  #f5efe2;
+    --text-secondary:#c9c0ae;
+    --text-muted:    #918876;
+    --series-1:      #14a08d;
+    --series-2:      #d4682f;
+    --band:          rgba(212, 104, 47, 0.18);
+    --recon:         rgba(201, 192, 174, 0.07);
+    --good:          #4ca96a;
+    --bad:           #e0706a;
   }
 }
 
@@ -50,6 +54,7 @@ body {
 }
 a { color: var(--series-1); text-decoration: none; }
 a:hover { text-decoration: underline; }
+h1, h2, .stat .v { font-family: var(--serif); font-weight: 600; }
 
 /* ── Two-column shell ──────────────────────────────────────────────────────
    A sticky context rail (identity, pickers, headline figures, notes) beside a
@@ -175,15 +180,47 @@ details.method summary { cursor: pointer; font-size: 12.5px; font-weight: 600; c
 details.method p { color: var(--text-muted); font-size: 12px; line-height: 1.55; }
 details.method code { font-family: var(--mono); font-size: 11.5px; }
 
-/* ── Single column below 900px ───────────────────────────────────────────── */
+/* ── Tablet: one column, rail becomes a header block ─────────────────────── */
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .rail { position: static; max-height: none; overflow: visible;
     border-right: 0; border-bottom: 1px solid var(--border); padding: 24px 18px; }
-  .rail h1 { font-size: 31px; }
+  .rail h1 { font-size: 32px; }
   .pickers { flex-direction: row; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 18px; }
+  .pickers label.field { flex: 1 1 0; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 20px; }
   .content { padding: 18px 16px 48px; }
   .filters { grid-template-columns: 1fr 1fr; }
-  .table-scroll { margin: 0 -18px; }
+}
+
+/* ── Phone: the seven-column table becomes one card per listing ───────────
+   A 7-column table on a 380px screen can only scroll sideways, which hides
+   the columns people actually scan. Each row becomes a block instead, with
+   the header row hidden and every cell labelled from its data-l attribute. */
+@media (max-width: 640px) {
+  .rail { padding: 20px 14px; }
+  .rail h1 { font-size: 27px; }
+  .content { padding: 14px 12px 40px; gap: 14px; }
+  .card { padding: 14px 14px 12px; }
+  .filters { grid-template-columns: 1fr; gap: 8px; }
+  select, input[type="search"] { min-height: 42px; font-size: 16px; }  /* 16px stops iOS zooming on focus */
+
+  .table-scroll { overflow-x: visible; margin: 0; }
+  #jobs, #jobs tbody, #jobs tr, #jobs td { display: block; width: 100%; }
+  #jobs thead { display: none; }
+  #jobs tr {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 14px; margin-bottom: 10px; background: var(--surface-1);
+  }
+  #jobs tr:hover { background: var(--surface-1); }
+  #jobs td { border: 0; padding: 3px 0; max-width: none; }
+  #jobs td.title { font-family: var(--serif); font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  #jobs td[data-l]:not(.title):not(.actions)::before {
+    content: attr(data-l); display: inline-block; min-width: 78px;
+    color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  }
+  #jobs td.actions { margin-top: 8px; display: flex; gap: 12px; align-items: center; }
+  #jobs td.actions:empty { display: none; }
+  .pager { justify-content: stretch; }
+  .pager button { flex: 1 1 0; min-height: 44px; }   /* thumb-sized tap targets */
 }

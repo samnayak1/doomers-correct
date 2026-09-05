@@ -117,14 +117,16 @@ function renderJobs(d) {
   } else {
     tbody.innerHTML = d.rows.map((r) => {
       const row = { ...r, currency: d.currency };
+      // data-l drives the stacked card view under 640px, where the header row
+      // is hidden and each cell has to say what it is.
       return `<tr>
-        <td class="title">${esc(r.title)}</td>
-        <td class="co">${esc(r.company)}</td>
-        <td class="co">${esc(r.location)}</td>
-        <td><span class="pill">${esc(r.site)}</span></td>
-        <td class="num">${fmtDate(r.date_posted)}</td>
-        <td class="num">${fmtSalary(row)}</td>
-        <td>${r.is_remote ? '<span class="pill remote">Remote</span>' : ''}
+        <td class="title" data-l="Role">${esc(r.title)}</td>
+        <td class="co" data-l="Company">${esc(r.company)}</td>
+        <td class="co" data-l="Location">${esc(r.location)}</td>
+        <td data-l="Source"><span class="pill">${esc(r.site)}</span></td>
+        <td class="num" data-l="Posted">${fmtDate(r.date_posted)}</td>
+        <td class="num" data-l="Salary">${fmtSalary(row)}</td>
+        <td class="actions">${r.is_remote ? '<span class="pill remote">Remote</span>' : ''}
             ${r.job_url ? `<a href="${esc(r.job_url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}</td>
       </tr>`;
     }).join('');
