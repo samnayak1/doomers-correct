@@ -1,9 +1,3 @@
-# Production front door. Caddy terminates TLS and provisions certificates from
-# Let's Encrypt automatically, which is the whole reason it is here instead of
-# nginx: no certbot, no renewal cron, no reload hook.
-#
-# SITE_ADDRESS is your domain (e.g. doomers.example.com). Set it to :80 to run
-# without TLS - useful behind a load balancer that already terminates it.
 {
 	email {$ACME_EMAIL:admin@localhost}
 	# Keep Caddy's own footprint predictable on a 1 GiB box.

@@ -62,18 +62,29 @@ What you give up by doing that:
 None of that is magic; if you would rather run the compose command yourself, do
 the builds one service at a time.
 
-### Without Docker
+### Seeding synthetic data
+
+To see the UI before any real data exists, `scripts/seed.py` fills the database with
+plausible rows for all three countries — companies named `Example …`, URLs on
+`example.com`, so seeded data is never mistaken for scraped data:
+
+```bash
+C="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
+$C exec worker python /app/scripts/seed.py --days 150 --reset
+```
+
+`--reset` deletes the existing database first, so do not point it at prod.
+
+### Running the tests
+
+The suite is offline — job boards are stubbed, so it needs no containers and no
+network, just numpy and pandas:
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -r worker/requirements.txt -r api/requirements.txt
-python -m common.pipeline --country india --no-s3   # one scrape
-python scripts/dev_server.py                        # http://127.0.0.1:8080
+pip install -r worker/requirements.txt
+python tests/test_core.py
 ```
-
-To see the UI before any real data exists:
-`python scripts/seed.py --days 150 --reset` fills the database with synthetic rows
-(companies named `Example …`, URLs on `example.com`).
 
 ## Common operations
 
@@ -88,13 +99,10 @@ $C logs -f worker                                 # follow the scraper
 docker stats --no-stream $($C ps -q)              # live memory vs the caps
 $C exec worker python -m common.pipeline --country india   # scrape now
 $C exec worker python -m common.pipeline --forecast-only   # refit models only
-$C exec worker python /app/scripts/seed.py --days 150 --reset   # synthetic data
 $C exec db-replicate litestream snapshots /data/jobs.db    # replication status
 $C down                                           # stop (keeps the data volume)
 $C down -v                                        # stop AND delete all data
 ```
-
-`python tests/test_core.py` runs the test suite offline — job boards are stubbed.
 
 ## Architecture
 
@@ -531,7 +539,7 @@ web/                       static page (hand-rolled SVG chart); nginx + Caddy im
 caddy/Caddyfile            production TLS front door
 litestream/litestream.yml  continuous SQLite replication to S3
 lambda/                    optional Lambda handler + image
-scripts/                   seed data, dev server, swap setup, Lambda deploy
+scripts/                   seed data, swap setup, Lambda deploy
 tests/                     offline test suite
 docker-compose.yml         base stack (worker, api, litestream)
 docker-compose.dev.yml     + nginx, dev replication prefix

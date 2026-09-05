@@ -1,8 +1,4 @@
-# Same static site as the nginx image, served by Caddy for production TLS.
 FROM caddy:2.11-alpine
 COPY caddy/Caddyfile /etc/caddy/Caddyfile
 COPY web/public/ /srv/
-# No HEALTHCHECK on purpose. Probing the site means dealing with the HTTP->HTTPS
-# redirect and a certificate for 127.0.0.1, and Caddy's admin endpoint is off;
-# a process check would report unhealthy for reasons that are not Caddy's fault.
-# `restart: unless-stopped` covers the case that actually matters.
+
