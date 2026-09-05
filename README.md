@@ -91,6 +91,13 @@ Each of these is load-bearing and explained where it lives:
   `common/config.py`.
 - **The forecast is damped and fitted in log space** on observed days only.
   Undamped it reached 2.5M listings — `common/forecast.py`.
+- **ARIMA is ~340 lines of pure numpy, not statsmodels.** Not a resource limit:
+  scipy costs +71 MB RSS and statsmodels +135 MB, both of which fit a 512 MB
+  worker cap and a 16 GB volume. It buys no difference to the chart — the line
+  is set by drift and damping, not by swapping Hannan-Rissanen for exact MLE.
+  Where statsmodels *would* earn its place is seasonality: postings have a
+  strong weekly cycle, and SARIMAX or STL would materially improve the
+  next-30-days forecast. It does nothing for the 2027 number.
 - **Board defaults are only what actually returns rows.** Of six JobSpy supports,
   four fail silently unproxied; the pipeline warns when one contributes nothing —
   `common/config.py`.
