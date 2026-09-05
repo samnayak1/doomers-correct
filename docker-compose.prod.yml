@@ -7,10 +7,10 @@
 services:
   db-restore:
     environment:
-      LITESTREAM_PREFIX: ${LITESTREAM_S3_PREFIX:-doomers/database.sqlite}
+      LITESTREAM_PREFIX: ${LITESTREAM_S3_PREFIX:-job-doomers/database.sqlite}
   db-replicate:
     environment:
-      LITESTREAM_PREFIX: ${LITESTREAM_S3_PREFIX:-doomers/database.sqlite}
+      LITESTREAM_PREFIX: ${LITESTREAM_S3_PREFIX:-job-doomers/database.sqlite}
 
   caddy:
     build:
