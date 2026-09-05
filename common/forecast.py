@@ -1,14 +1,7 @@
 """Forecasting for the active-listings series.
-
-Deliberately depends on nothing but numpy.  statsmodels/scipy would pull ~120 MB
-of extra wheels into the image, which we cannot afford on a 1 GB box, and we only
-need a small, well-understood slice of their functionality.
-
 Two models:
 
-* ``linear``  - ordinary least squares on time.  Used while the observed history
-                is short (< ARIMA_MIN_POINTS days), where an ARIMA fit would just
-                be fitting noise.
+* ``linear``  - ols when sample size is small
 * ``arima``   - non-seasonal ARIMA(p, d, q), estimated by the Hannan-Rissanen
                 three-stage procedure and selected over a small (p, q) grid by
                 AICc.  Used once enough history has accumulated.
@@ -291,9 +284,7 @@ def arima_forecast(y: np.ndarray, horizon: int, max_p: int = 3, max_q: int = 3,
     )
 
 
-# --------------------------------------------------------------------------- #
-# Top-level entry point
-# --------------------------------------------------------------------------- #
+
 def forecast_series(
     dates: list[str],
     values: list[float],
@@ -304,19 +295,7 @@ def forecast_series(
     log_space: bool = True,
     damping: float = 1.0,
 ) -> dict | None:
-    """Extrapolate a daily series out to `until` (inclusive, ISO date strings).
 
-    Model choice follows the brief: OLS while history is short, non-seasonal
-    ARIMA once at least `arima_min_points` days have been observed.
-
-    `log_space` fits ARIMA on log(1 + y) and exponentiates back.  This matters
-    more than the model family for a two-year horizon: it makes the trend
-    multiplicative (a % per month rather than N listings per day), and it makes
-    a negative forecast structurally impossible instead of merely clipped.
-    It is deliberately NOT applied to the linear model - "simple linear
-    regression" should draw a straight line, and compounding a slope estimated
-    from two weeks of data over two years produces nonsense.
-    """
     from datetime import date, timedelta
 
     if len(values) < min_points:
