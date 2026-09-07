@@ -57,8 +57,12 @@ services:
     depends_on:
       db-restore:
         condition: service_completed_successfully
-    mem_limit: 48m
-    mem_reservation: 16m
+    # Measured peaking at 41 MiB against a 48 MiB cap with only a 2.7 MB
+    # database. Litestream buffers WAL segments and snapshots while uploading,
+    # so its peak tracks database size - which is projected at ~200 MB after a
+    # year. An OOM here kills replication quietly, so give it real headroom.
+    mem_limit: 96m
+    mem_reservation: 24m
     cpus: 0.25
     pids_limit: 64
     entrypoint: ["/bin/sh", "-c"]
@@ -92,8 +96,11 @@ services:
       # Read-write on purpose: SQLite in WAL mode must touch the -shm sidecar
       # even to read. The API opens the file with `file:...?mode=ro` instead.
       - data:/data
-    mem_limit: 160m
-    mem_reservation: 64m
+    # Measured at 44 MiB serving live traffic; 112 leaves 2.5x. The 48 MiB
+    # freed here is what pays for db-replicate's raise, so the totals are
+    # unchanged: 752 MiB dev, 784 MiB prod.
+    mem_limit: 112m
+    mem_reservation: 48m
     cpus: 0.75
     pids_limit: 128
     logging: *logging
