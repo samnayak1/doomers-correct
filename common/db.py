@@ -90,10 +90,6 @@ def connect(path: str | Path, read_only: bool = False) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=15000")
     return conn
 
-
-# --------------------------------------------------------------------------- #
-# Writes
-# --------------------------------------------------------------------------- #
 def upsert_jobs(conn: sqlite3.Connection, country: str, rows: list[dict], seen: str) -> tuple[int, int]:
     """Insert new listings, refresh `last_seen` on ones we have seen before.
 
@@ -151,9 +147,6 @@ def set_meta(conn: sqlite3.Connection, k: str, v: str) -> None:
     conn.commit()
 
 
-# --------------------------------------------------------------------------- #
-# Reads
-# --------------------------------------------------------------------------- #
 def get_forecast(conn: sqlite3.Connection, country: str, metric: str = "tech_active") -> dict | None:
     row = conn.execute(
         "SELECT payload, generated_at FROM forecasts WHERE country=? AND metric=?", (country, metric)
@@ -175,12 +168,33 @@ def observed_dates(conn: sqlite3.Connection, country: str) -> list[str]:
 def daily_series(
     conn: sqlite3.Connection,
     country: str,
-    *,
+    *,  # everything after this when calling should be called using keyword
     tech_only: bool = True,
     reconstruct_days: int | None = None,
     today: str | None = None,
 ) -> dict:
     """Reconstruct active-listing counts per day.
+
+    Job	Posted	First Seen	Last Seen
+A	Jan 1	Jan 5	Jan 20
+B	Jan 10	Jan 11	Jan 25
+C	Jan 15	Jan 18	Jan 22
+
+becomes - 
+
+{
+    "dates": [
+        "2026-01-01",
+        "2026-01-02",
+        ...
+    ],
+    "values": [
+        1,
+        1,
+        2,
+        ...
+    ]
+}
 
     Each listing contributes an interval:
 
@@ -188,10 +202,7 @@ def daily_series(
         start = max(start, first_seen - reconstruct)  # bound the pre-launch tail
         end   = min(last_seen, today)                 # when we last saw it
 
-    The second line matters more than it looks. Boards carry postings with very
-    old dates - a listing dated 2024 can still be live today - and without that
-    bound one stale row stretches the chart across years nobody observed.
-
+        
     Counting overlaps per day gives the curve.  Using `date_posted` means the
     chart has real shape from the very first scrape instead of a single dot -
     but days before our first scrape are *survivorship-biased* (we can only see
@@ -204,7 +215,7 @@ def daily_series(
 
     today_d = date.fromisoformat(today) if today else date.today()
     where = "country=?" + (" AND is_tech=1" if tech_only else "")
-
+     #count per day 
     counts: dict[int, int] = {}
     lo_ord = hi_ord = None
     for posted, first_seen, last_seen in conn.execute(

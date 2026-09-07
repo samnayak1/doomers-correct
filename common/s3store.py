@@ -1,14 +1,3 @@
-"""S3 storage for the SQLite file.
-
-Deliberately narrow. On EC2 this is unused - Litestream replicates the database
-continuously and `DB_BACKUP_TO_S3` is false in the compose files, so nothing
-here runs. It exists for the Lambda scheduler, which has no persistent disk and
-no Litestream sidecar: S3 is its only storage between invocations.
-
-The publishing layer that used to live here (nightly raw scrape archives,
-derived series/latest JSON, a manifest) was removed once the page stopped
-linking to it. Litestream is the backup story; this is the Lambda story.
-"""
 
 from __future__ import annotations
 

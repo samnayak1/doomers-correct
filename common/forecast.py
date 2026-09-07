@@ -7,6 +7,9 @@ Two models:
                 AICc.  Used once enough history has accumulated.
 
 Both return a point forecast plus an approximate 95% interval.
+
+
+The following code is AI generated. 
 """
 
 from __future__ import annotations
@@ -35,9 +38,9 @@ class ForecastResult:
         return self
 
 
-# --------------------------------------------------------------------------- #
-# Linear regression
-# --------------------------------------------------------------------------- #
+
+# Linear regression - used initially because arima needs more data to be stable.  Also a fallback if ARIMA fails.
+
 def linear_forecast(y: np.ndarray, horizon: int, damping: float = 1.0) -> ForecastResult:
     """OLS of y on t, with a textbook prediction interval.
 
@@ -80,9 +83,9 @@ def linear_forecast(y: np.ndarray, horizon: int, damping: float = 1.0) -> Foreca
     )
 
 
-# --------------------------------------------------------------------------- #
+
 # ARIMA helpers
-# --------------------------------------------------------------------------- #
+
 def _acf1(x: np.ndarray) -> float:
     """Lag-1 autocorrelation."""
     x = x - x.mean()
