@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from common import config, db, s3store
+from common import config, db
 
 app = FastAPI(title="Are doomers correct?", docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -87,26 +87,6 @@ def jobs(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1, q: str = "
     out.update({"country": country, "limit": limit, "offset": offset,
                 "currency": config.COUNTRIES[country]["currency"]})
     return JSONResponse(out, headers={"Cache-Control": "public, max-age=120"})
-
-
-@app.get("/api/data")
-def data_links():
-    """Where to get the raw files, so the data is usable without this API."""
-    if not s3store.enabled():
-        return {"s3": False, "note": "S3 publishing is not configured on this deployment."}
-    return {
-        "s3": True,
-        "bucket": config.S3_BUCKET,
-        "manifest": s3store.public_url(s3store.key("manifest.json")),
-        "countries": {
-            c: {
-                "series": s3store.public_url(s3store.key("series", f"{c}.json")),
-                "latest": s3store.public_url(s3store.key("latest", f"{c}.json")),
-                "raw_prefix": s3store.public_url(s3store.key("raw", c)) + "/",
-            }
-            for c in config.COUNTRIES
-        },
-    }
 
 
 @app.get("/api/history")

@@ -31,8 +31,8 @@ point the domain's A record at the instance, and open **both 80 and 443**. Caddy
 answers the ACME challenge on 80, so certificates fail silently if it is closed.
 Set `SITE_ADDRESS=:80` to skip TLS.
 
-Leave `S3_BUCKET` empty to run entirely on local SQLite — publishing, replication
-and restore all degrade to no-ops and everything else still works.
+Leave `S3_BUCKET` empty to run entirely on local SQLite — replication and restore
+degrade to no-ops and everything else still works.
 
 ### Settings worth knowing
 
@@ -75,7 +75,7 @@ optionally with `-timestamp 2026-09-05T00:00:00Z`.
 ## API
 
 `/api/series?country=` · `/api/jobs?country=&q=&site=&remote=&sort=` ·
-`/api/history?country=` · `/api/countries` · `/api/data` · `/api/health` ·
+`/api/history?country=` · `/api/countries` · `/api/health` ·
 `/api/docs`
 
 ## Before you change things
@@ -110,7 +110,7 @@ continues and knows nothing about hiring cycles, funding or layoffs.
 ## Layout
 
 ```
-common/     config, SQLite, JobSpy wrapper, forecasting, S3, pipeline
+common/     config, SQLite, JobSpy wrapper, forecasting, pipeline
 worker/     nightly scheduler + image        api/     read-only JSON API + image
 web/        static page; nginx + Caddy       caddy/   production TLS config
 litestream/ replication config               lambda/  optional Lambda scheduler

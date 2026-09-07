@@ -265,7 +265,7 @@ def test_pipeline_end_to_end():
     start = date(2026, 1, 1)
     for i in range(9):
         day_holder["d"] = start + timedelta(days=i)
-        res = pipeline.run_country("india", run_day=day_holder["d"], publish_s3=False)
+        res = pipeline.run_country("india", run_day=day_holder["d"])
     check("pipeline run succeeds", res["ok"] and res["rows"] > 0, str(res))
 
     conn = db.connect(dbp, read_only=True)

@@ -49,46 +49,7 @@ def refresh_forecast(conn, country: str, *, until: str | None = None) -> dict | 
     return payload
 
 
-def publish(conn, country: str, scrape_date: str, rows_for_s3: list[dict] | None) -> str | None:
-    """Push this run's artefacts to S3.  Never fatal - the site works without it."""
-    if not s3store.enabled():
-        return None
-    raw_key = None
-    try:
-        if rows_for_s3 is not None:
-            raw_key = s3store.key("raw", country, f"{scrape_date}.json.gz")
-            s3store.put_json(raw_key, {
-                "country": country, "scrape_date": scrape_date,
-                "count": len(rows_for_s3), "jobs": rows_for_s3,
-            }, cache_seconds=86400)
-
-        series = db.daily_series(conn, country)
-        s3store.put_json(s3store.key("series", f"{country}.json"), {
-            "country": country,
-            "series": series,
-            "forecast": db.get_forecast(conn, country),
-            "summary": db.summary(conn, country),
-        })
-        s3store.put_json(s3store.key("latest", f"{country}.json"),
-                         db.list_jobs(conn, country, limit=1000))
-        if config.DB_BACKUP_TO_S3:
-            s3store.backup_db(config.DB_PATH)
-        s3store.write_manifest({
-            c: {
-                "label": cfg["label"],
-                "series": s3store.public_url(s3store.key("series", f"{c}.json")),
-                "latest": s3store.public_url(s3store.key("latest", f"{c}.json")),
-                "raw_prefix": s3store.public_url(s3store.key("raw", c)) + "/",
-            }
-            for c, cfg in config.COUNTRIES.items()
-        })
-        log(f"[s3] {country}: published (raw={raw_key})")
-    except Exception as exc:
-        log(f"[s3] {country}: publish FAILED {type(exc).__name__}: {exc}")
-    return raw_key
-
-
-def run_country(country: str, *, run_day: date | None = None, publish_s3: bool = True) -> dict:
+def run_country(country: str, *, run_day: date | None = None) -> dict:
     country = config.country_key(country)
     run_day = run_day or date.today()
     scrape_date = run_day.isoformat()
@@ -98,7 +59,6 @@ def run_country(country: str, *, run_day: date | None = None, publish_s3: bool =
     total_rows = 0
     new_total = 0
     by_site: dict[str, int] = {}
-    collected: list[dict] = []
     ok = True
     note = ""
 
@@ -109,8 +69,6 @@ def run_country(country: str, *, run_day: date | None = None, publish_s3: bool =
             new_total += new
             total_rows += seen
             by_site[site] = by_site.get(site, 0) + seen
-            if s3store.enabled():
-                collected.extend(rows)
     except Exception as exc:
         ok = False
         note = f"{type(exc).__name__}: {exc}"
@@ -156,7 +114,13 @@ def run_country(country: str, *, run_day: date | None = None, publish_s3: bool =
         f"tech active = {active_total}")
 
     refresh_forecast(conn, country)
-    raw_key = publish(conn, country, scrape_date, collected if publish_s3 else None)
+    # Only the Lambda path backs the file up here; on EC2, Litestream has it.
+    raw_key = None
+    if config.DB_BACKUP_TO_S3:
+        try:
+            raw_key = s3store.backup_db(config.DB_PATH)
+        except Exception as exc:
+            log(f"[s3] {country}: backup FAILED {type(exc).__name__}: {exc}")
     if raw_key:
         conn.execute("UPDATE snapshots SET s3_key=? WHERE country=? AND scrape_date=?",
                      (raw_key, country, scrape_date))
@@ -168,19 +132,18 @@ def run_country(country: str, *, run_day: date | None = None, publish_s3: bool =
     return result
 
 
-def run_all(publish_s3: bool = True) -> list[dict]:
+def run_all() -> list[dict]:
     # A no-op under Litestream, which has already restored the file before this
     # container was allowed to start (see db-restore in docker-compose.yml).
     if config.DB_BACKUP_TO_S3:
         s3store.restore_db(config.DB_PATH)
-    return [run_country(c, publish_s3=publish_s3) for c in config.COUNTRIES]
+    return [run_country(c) for c in config.COUNTRIES]
 
 
 if __name__ == "__main__":
     import argparse, json as _json
     ap = argparse.ArgumentParser(description="Scrape job boards and update the dataset.")
     ap.add_argument("--country", default="all", help="india | usa | all")
-    ap.add_argument("--no-s3", action="store_true")
     ap.add_argument("--forecast-only", action="store_true", help="re-fit models without scraping")
     a = ap.parse_args()
 
@@ -190,6 +153,5 @@ if __name__ == "__main__":
                (config.COUNTRIES if a.country == "all" else [config.country_key(a.country)])}
         conn.close()
     else:
-        out = run_all(publish_s3=not a.no_s3) if a.country == "all" \
-            else [run_country(a.country, publish_s3=not a.no_s3)]
+        out = run_all() if a.country == "all" else [run_country(a.country)]
     print(_json.dumps(out, indent=2, default=str))
