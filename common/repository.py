@@ -13,6 +13,15 @@ JOB_COLUMNS = [
 LIST_COLUMNS = """id, site, title, company, location, is_remote, job_type, date_posted,
                   job_url, min_amount, max_amount, currency, pay_interval, first_seen, last_seen"""
 
+# Named rather than SELECT *: the snapshots table has 14 columns and callers use
+# six. Listing them keeps a new column from silently widening every response,
+# and makes it obvious which fields the summary actually depends on.
+SNAPSHOT_COLUMNS = """scrape_date, tech_active, active_total, remote_active,
+                      new_jobs, s3_key"""
+
+HISTORY_COLUMNS = """scrape_date, ran_at, rows_seen, new_jobs, tech_active,
+                     active_total, remote_active, duration_sec, ok, s3_key"""
+
 SORTS = {
     "date_posted": "date_posted DESC, first_seen DESC",
     "first_seen": "first_seen DESC",
@@ -131,8 +140,8 @@ class SnapshotRepository:
 
     def latest(self, country: str, offset: int = 0) -> sqlite3.Row | None:
         return self.conn.execute(
-            "SELECT * FROM snapshots WHERE country=? AND ok=1 "
-            "ORDER BY scrape_date DESC LIMIT 1 OFFSET ?", (country, offset)).fetchone()
+            f"SELECT {SNAPSHOT_COLUMNS} FROM snapshots WHERE country=? AND ok=1 "
+            f"ORDER BY scrape_date DESC LIMIT 1 OFFSET ?", (country, offset)).fetchone()
 
     def observed_dates(self, country: str) -> list[str]:
         """The days a scrape actually completed. Anything else on the chart is reconstructed."""
@@ -146,9 +155,8 @@ class SnapshotRepository:
 
     def recent(self, country: str, limit: int = 60) -> list[dict]:
         return [dict(r) for r in self.conn.execute(
-            "SELECT scrape_date, ran_at, rows_seen, new_jobs, tech_active, active_total, "
-            "remote_active, duration_sec, ok, s3_key FROM snapshots "
-            "WHERE country=? ORDER BY scrape_date DESC LIMIT ?", (country, limit))]
+            f"SELECT {HISTORY_COLUMNS} FROM snapshots "
+            f"WHERE country=? ORDER BY scrape_date DESC LIMIT ?", (country, limit))]
 
     def set_s3_key(self, country: str, scrape_date: str, key: str) -> None:
         self.conn.execute("UPDATE snapshots SET s3_key=? WHERE country=? AND scrape_date=?",
