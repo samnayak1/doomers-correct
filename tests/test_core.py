@@ -24,7 +24,7 @@ os.environ.update(DATA_DIR=str(TMP), DB_PATH=str(TMP / "jobs.db"), SCRAPE_PAUSE_
 
 import numpy as np  # noqa: E402
 
-from common import config, db  # noqa: E402
+from common import config, db, service  # noqa: E402
 from common.forecast import arima_forecast, forecast_series, linear_forecast  # noqa: E402
 
 PASS: list[str] = []
@@ -135,15 +135,15 @@ def test_series_is_unbiased_at_the_right_edge():
             jid += 1
             live[jid] = day
         live = {k: v for k, v in live.items() if (day - v).days < L}
-        db.upsert_jobs(conn, "india", [
+        service.build(conn).job_repo.upsert("india", [
             dict(id=str(k), site="indeed", title="Software Engineer", company="Example",
                  location="India", is_remote=0, job_type="fulltime", date_posted=v.isoformat(),
                  job_url=f"https://example.com/{k}", min_amount=None, max_amount=None,
                  currency="INR", pay_interval=None, is_tech=1, description=None)
             for k, v in live.items()], day.isoformat())
-        db.record_snapshot(conn, "india", day.isoformat(), ran_at="t", ok=1)
+        service.build(conn).snapshot_repo.record("india", day.isoformat(), ran_at="t", ok=1)
 
-    s = db.daily_series(conn, "india", today=today.isoformat())
+    s = service.build(conn).series.daily_series("india", today=today.isoformat())
     tail = s["values"][-10:]
     check("steady state reads N*L at the edge", set(tail) == {N * L}, f"tail={tail[:4]}… expected {N * L}")
     conn.close()
@@ -169,10 +169,10 @@ def test_stale_posting_dates_do_not_stretch_the_chart():
                  location="India", is_remote=0, job_type="fulltime", date_posted=today,
                  job_url="https://example.com/2", min_amount=None, max_amount=None,
                  currency="INR", pay_interval=None, is_tech=1, description=None)]
-    db.upsert_jobs(conn, "india", rows, today)
-    db.record_snapshot(conn, "india", today, ran_at="t", ok=1)
+    service.build(conn).job_repo.upsert("india", rows, today)
+    service.build(conn).snapshot_repo.record("india", today, ran_at="t", ok=1)
 
-    s = db.daily_series(conn, "india", today=today)
+    s = service.build(conn).series.daily_series("india", today=today)
     span = (date.fromisoformat(s["dates"][-1]) - date.fromisoformat(s["dates"][0])).days
     check("chart span is bounded by RECONSTRUCT_DAYS", span <= config.RECONSTRUCT_DAYS,
           f"span={span}d from a 2024 posting date")
@@ -183,6 +183,39 @@ def test_stale_posting_dates_do_not_stretch_the_chart():
     conn.close()
 
 
+def test_series_service_runs_without_a_database():
+    """The point of the repository split: rules testable without SQLite.
+
+    SeriesService only ever calls `jobs.intervals()` and
+    `snapshots.observed_dates()`, so a pair of stubs is enough to drive it. No
+    file, no schema, no fixtures - just the interval arithmetic under test.
+    """
+    class StubJobs:
+        def __init__(self, rows): self.rows = rows
+        def intervals(self, country, *, tech_only=True): return iter(self.rows)
+
+    class StubSnapshots:
+        def __init__(self, days): self.days = days
+        def observed_dates(self, country): return self.days
+
+    # posted, first_seen, last_seen
+    rows = [("2026-03-01", "2026-03-01", "2026-03-05"),   # spans 1-5
+            ("2026-03-03", "2026-03-03", "2026-03-04")]   # spans 3-4
+    svc = service.SeriesService(StubJobs(rows), StubSnapshots(["2026-03-03"]))
+    out = svc.daily_series("india", today="2026-03-05")
+
+    check("stub-driven series spans the union of intervals",
+          out["dates"] == ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05"],
+          str(out["dates"]))
+    check("overlapping days are counted twice",
+          out["values"] == [1, 1, 2, 2, 1], str(out["values"]))
+    check("observed_from comes from the snapshot stub",
+          out["observed_from"] == "2026-03-03", out["observed_from"])
+    check("fit window starts at first observation, not first data",
+          service.SeriesService.fit_window(out, max_days=None) ==
+          (["2026-03-03", "2026-03-04", "2026-03-05"], [2.0, 2.0, 1.0]))
+
+
 def test_first_seen_never_moves_backwards():
     dbp = TMP / "fs.db"
     dbp.unlink(missing_ok=True)
@@ -191,8 +224,8 @@ def test_first_seen_never_moves_backwards():
                location="India", is_remote=0, job_type="fulltime", date_posted="2026-01-01",
                job_url="https://example.com/a", min_amount=None, max_amount=None,
                currency="INR", pay_interval=None, is_tech=1, description=None)
-    db.upsert_jobs(conn, "india", [row], "2026-01-05")
-    db.upsert_jobs(conn, "india", [row], "2026-01-09")
+    service.build(conn).job_repo.upsert("india", [row], "2026-01-05")
+    service.build(conn).job_repo.upsert("india", [row], "2026-01-09")
     got = conn.execute("SELECT first_seen, last_seen, seen_count FROM jobs").fetchone()
     check("first_seen is stable, last_seen advances",
           tuple(got) == ("2026-01-05", "2026-01-09", 2), str(tuple(got)))
@@ -204,15 +237,15 @@ def test_fit_window_excludes_reconstructed_days():
     dbp.unlink(missing_ok=True)
     conn = db.connect(dbp)
     # Posted well before we ever ran, so the series starts before observation did.
-    db.upsert_jobs(conn, "india", [
+    service.build(conn).job_repo.upsert("india", [
         dict(id=f"j{i}", site="indeed", title="Software Engineer", company="Example",
              location="India", is_remote=0, job_type="fulltime", date_posted="2026-01-01",
              job_url=f"https://example.com/{i}", min_amount=None, max_amount=None,
              currency="INR", pay_interval=None, is_tech=1, description=None)
         for i in range(5)], "2026-03-01")
-    db.record_snapshot(conn, "india", "2026-03-01", ran_at="t", ok=1)
-    s = db.daily_series(conn, "india", today="2026-03-01")
-    d, _ = db.fit_window(s, max_days=None)
+    service.build(conn).snapshot_repo.record("india", "2026-03-01", ran_at="t", ok=1)
+    s = service.build(conn).series.daily_series("india", today="2026-03-01")
+    d, _ = service.SeriesService.fit_window(s, max_days=None)
     check("series includes reconstructed history", s["dates"][0] == "2026-01-01", s["dates"][0])
     check("fit window starts at first observation", d == ["2026-03-01"], str(d))
     conn.close()
@@ -269,14 +302,14 @@ def test_pipeline_end_to_end():
     check("pipeline run succeeds", res["ok"] and res["rows"] > 0, str(res))
 
     conn = db.connect(dbp, read_only=True)
-    check("snapshots recorded", len(db.observed_dates(conn, "india")) == 9)
+    check("snapshots recorded", len(service.build(conn).snapshot_repo.observed_dates("india")) == 9)
     check("descriptions dropped by default",
           conn.execute("SELECT COUNT(*) FROM jobs WHERE description IS NOT NULL").fetchone()[0] == 0)
-    fc = db.get_forecast(conn, "india")
+    fc = service.build(conn).forecasts.get("india")
     check("forecast produced after 7+ days", fc is not None and fc["model"] == "linear",
           fc["model"] if fc else "none")
-    summary = db.summary(conn, "india")
-    series = db.daily_series(conn, "india", today=(start + timedelta(days=8)).isoformat())
+    summary = service.build(conn).series.summary("india")
+    series = service.build(conn).series.daily_series("india", today=(start + timedelta(days=8)).isoformat())
     check("summary agrees with the series", summary["tech_active"] == series["values"][-1],
           f"{summary['tech_active']} vs {series['values'][-1]}")
     conn.close()

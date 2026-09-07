@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timezone
 
-from . import config, db, s3store
+from . import config, db, s3store, service
 
 
 def log(msg: str) -> None:
@@ -18,35 +18,8 @@ def log(msg: str) -> None:
 
 
 def refresh_forecast(conn, country: str, *, until: str | None = None) -> dict | None:
-    """Re-fit the model on the observed history and cache the result.
-
-    Only days we actually scraped are used.  The reconstructed pre-launch tail of
-    the chart is survivorship-biased (older listings we never saw have already
-    expired), so fitting on it would manufacture a growth trend that is not real.
-    """
-    series = db.daily_series(conn, country)
-    dates, values = db.fit_window(series, max_days=config.FORECAST_FIT_DAYS)
-    if len(dates) < config.FORECAST_MIN_POINTS:
-        log(f"[forecast] {country}: {len(dates)} observed day(s), need "
-            f"{config.FORECAST_MIN_POINTS} - skipping")
-        return None
-
-    from .forecast import forecast_series  
-    payload = forecast_series(
-        dates, values,
-        until or config.FORECAST_UNTIL,
-        arima_min_points=config.ARIMA_MIN_POINTS,
-        min_points=config.FORECAST_MIN_POINTS,
-        log_space=config.FORECAST_LOG_SPACE,
-        damping=config.FORECAST_DAMPING,
-    )
-    if payload:
-        now = datetime.now(timezone.utc).isoformat()
-        db.save_forecast(conn, country, "tech_active", payload, now)
-        log(f"[forecast] {country}: {payload['model']} over {payload['horizon_days']}d "
-            f"(fit on {payload['fitted_on']['points']} pts) -> "
-            f"{payload['points'][-1]['yhat']:.0f} on {payload['points'][-1]['date']}")
-    return payload
+    """Kept as a module-level helper because the CLI and the seeder both call it."""
+    return service.build(conn).forecasts.refresh(country, until=until, log=log)
 
 
 def run_country(country: str, *, run_day: date | None = None) -> dict:
@@ -56,6 +29,7 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
     started = time.time()
 
     conn = db.connect(config.DB_PATH)
+    svc = service.build(conn)
     total_rows = 0
     new_total = 0
     by_site: dict[str, int] = {}
@@ -65,7 +39,7 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
     try:
         from .scrape import scrape_country
         for site, rows in scrape_country(country, run_day, log=log):
-            new, seen = db.upsert_jobs(conn, country, rows, scrape_date)
+            new, seen = svc.job_repo.upsert(country, rows, scrape_date)
             new_total += new
             total_rows += seen
             by_site[site] = by_site.get(site, 0) + seen
@@ -75,25 +49,19 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
         log(f"[run] {country}: scrape aborted - {note}")
 
     if total_rows == 0 and not ok:
-        db.record_snapshot(conn, country, scrape_date, ran_at=datetime.now(timezone.utc).isoformat(),
+        svc.snapshot_repo.record(country, scrape_date, ran_at=datetime.now(timezone.utc).isoformat(),
                            duration_sec=round(time.time() - started, 1), rows_seen=0, ok=0, note=note)
         conn.close()
         return {"country": country, "ok": False, "note": note}
 
-    series = db.daily_series(conn, country, today=scrape_date)
+    series = svc.series.daily_series(country, today=scrape_date)
     active_total = series["values"][-1] if series["values"] else 0
-    all_series = db.daily_series(conn, country, tech_only=False, today=scrape_date)
-    remote_active = conn.execute(
-        "SELECT COUNT(*) FROM jobs WHERE country=? AND is_tech=1 AND is_remote=1 AND last_seen>=?",
-        (country, scrape_date),
-    ).fetchone()[0]
-    tech_seen = conn.execute(
-        "SELECT COUNT(*) FROM jobs WHERE country=? AND is_tech=1 AND last_seen=?",
-        (country, scrape_date),
-    ).fetchone()[0]
+    all_series = svc.series.daily_series(country, tech_only=False, today=scrape_date)
+    remote_active = svc.job_repo.count_remote(country, seen_on_or_after=scrape_date)
+    tech_seen = svc.job_repo.count_seen_on(country, scrape_date)
 
-    db.record_snapshot(
-        conn, country, scrape_date,
+    svc.snapshot_repo.record(
+        country, scrape_date,
         ran_at=datetime.now(timezone.utc).isoformat(),
         duration_sec=round(time.time() - started, 1),
         rows_seen=total_rows, new_jobs=new_total, tech_jobs=tech_seen,
@@ -113,7 +81,7 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
         f"{{{', '.join(f'{k}={v}' for k, v in sorted(by_site.items()))}}}, "
         f"tech active = {active_total}")
 
-    refresh_forecast(conn, country)
+    svc.forecasts.refresh(country, log=log)
     # Only the Lambda path backs the file up here; on EC2, Litestream has it.
     raw_key = None
     if config.DB_BACKUP_TO_S3:
@@ -122,9 +90,7 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
         except Exception as exc:
             log(f"[s3] {country}: backup FAILED {type(exc).__name__}: {exc}")
     if raw_key:
-        conn.execute("UPDATE snapshots SET s3_key=? WHERE country=? AND scrape_date=?",
-                     (raw_key, country, scrape_date))
-        conn.commit()
+        svc.snapshot_repo.set_s3_key(country, scrape_date, raw_key)
 
     result = {"country": country, "ok": ok, "rows": total_rows, "new": new_total,
               "tech_active": active_total, "duration_sec": round(time.time() - started, 1)}

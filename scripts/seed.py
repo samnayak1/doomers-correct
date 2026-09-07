@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import config, db  # noqa: E402
+from common import config, db, service  # noqa: E402
 from common.pipeline import refresh_forecast  # noqa: E402
 
 TITLES = ["Software Engineer", "Senior Backend Developer", "Data Engineer", "DevOps Engineer",
@@ -29,6 +29,7 @@ CITIES = {"india": ["Bengaluru", "Hyderabad", "Pune", "Chennai", "Gurugram", "Mu
 
 def seed(country: str, days: int, base: int, drift: float, rng: random.Random) -> None:
     conn = db.connect(config.DB_PATH)
+    svc = service.build(conn)
     today = date.today()
     start = today - timedelta(days=days - 1)
     cur = config.COUNTRIES[country]["currency"]
@@ -53,15 +54,15 @@ def seed(country: str, days: int, base: int, drift: float, rng: random.Random) -
                 "min_amount": float(lo), "max_amount": float(lo) * rng.uniform(1.2, 1.9),
                 "currency": cur, "pay_interval": "yearly", "is_tech": 1, "description": None,
             })
-        db.upsert_jobs(conn, country, rows, day.isoformat())
+        svc.job_repo.upsert(country, rows, day.isoformat())
         # Refresh a slice of older listings so last_seen advances realistically.
         conn.execute(
             "UPDATE jobs SET last_seen=? WHERE country=? AND last_seen>=? AND (rowid % 7) != 0",
             (day.isoformat(), country, (day - timedelta(days=45)).isoformat()))
         conn.commit()
 
-        s = db.daily_series(conn, country, today=day.isoformat())
-        db.record_snapshot(conn, country, day.isoformat(), ran_at=f"{day}T00:05:00Z",
+        s = svc.series.daily_series(country, today=day.isoformat())
+        svc.snapshot_repo.record(country, day.isoformat(), ran_at=f"{day}T00:05:00Z",
                            duration_sec=rng.uniform(200, 500), rows_seen=n_new * 4,
                            new_jobs=n_new, tech_jobs=n_new,
                            active_total=int((s["values"][-1] if s["values"] else 0) * 1.35),
