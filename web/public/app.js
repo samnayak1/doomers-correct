@@ -26,7 +26,7 @@ const fmtDate = (iso) => (iso ? new Date(iso + 'T00:00:00Z')
 function fmtSalary(row) {
   const { min_amount: lo, max_amount: hi, currency } = row;
   if (!lo && !hi) return '—';
-  const sym = { INR: '₹', AUD: 'A$', USD: '$' }[currency] || '';
+  const sym = { INR: '₹', USD: '$' }[currency] || '';
   const short = (n) => {
     if (n == null) return '';
     if (currency === 'INR' && n >= 100000) return `${(n / 100000).toFixed(n >= 1000000 ? 0 : 1)}L`;
@@ -212,7 +212,7 @@ addEventListener('resize', () => {
     $('country').innerHTML = countries.map((c) =>
       `<option value="${esc(c.key)}"${c.key === state.country ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
   } catch {
-    $('country').innerHTML = '<option value="india">India</option><option value="australia">Australia</option>';
+    $('country').innerHTML = '<option value="india">India</option><option value="usa">United States</option>';
   }
   reloadAll();
 })();

@@ -1,6 +1,6 @@
 # Are doomers correct?
 
-Active **tech job listings in India, Australia and the United States**, scraped
+Active **tech job listings in India and the United States**, scraped
 nightly from public job boards, charted, and extrapolated to 31 December 2027.
 
 Inspired by [@usr_bin_roygbiv](https://x.com/usr_bin_roygbiv)'s

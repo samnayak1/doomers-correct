@@ -1,5 +1,5 @@
 """
-1.scrape data
+1. scrape data
 2. fit ARIMA model to active-listings series
 3. store data and forecast in SQLite
 
@@ -179,7 +179,7 @@ def run_all(publish_s3: bool = True) -> list[dict]:
 if __name__ == "__main__":
     import argparse, json as _json
     ap = argparse.ArgumentParser(description="Scrape job boards and update the dataset.")
-    ap.add_argument("--country", default="all", help="india | australia | all")
+    ap.add_argument("--country", default="all", help="india | usa | all")
     ap.add_argument("--no-s3", action="store_true")
     ap.add_argument("--forecast-only", action="store_true", help="re-fit models without scraping")
     a = ap.parse_args()

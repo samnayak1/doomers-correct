@@ -23,7 +23,6 @@ TITLES = ["Software Engineer", "Senior Backend Developer", "Data Engineer", "Dev
           "Full Stack Developer", "Android Developer", "Cloud Engineer", "QA Automation Engineer",
           "Staff Software Engineer", "Security Engineer", "iOS Developer"]
 CITIES = {"india": ["Bengaluru", "Hyderabad", "Pune", "Chennai", "Gurugram", "Mumbai", "Noida"],
-          "australia": ["Sydney", "Melbourne", "Brisbane", "Perth", "Canberra", "Adelaide"],
           "usa": ["San Francisco, CA", "New York, NY", "Seattle, WA", "Austin, TX",
                   "Boston, MA", "Denver, CO"]}
 
@@ -86,6 +85,5 @@ if __name__ == "__main__":
             Path(str(config.DB_PATH) + suffix).unlink(missing_ok=True)
     rng = random.Random(a.seed)
     seed("india", a.days, base=2400, drift=-0.0015, rng=rng)
-    seed("australia", a.days, base=650, drift=0.0009, rng=rng)
     seed("usa", a.days, base=5200, drift=-0.0008, rng=rng)
     print(f"database: {config.DB_PATH}")

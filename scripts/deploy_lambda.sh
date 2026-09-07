@@ -97,7 +97,7 @@ sched_for() {  # shift the cron minute field by $2 minutes
 }
 
 i=0
-for c in india australia usa; do
+for c in india usa; do
   RULE="${FUNCTION}-nightly-${c}"
   EXPR="$(sched_for "$SCHEDULE_UTC" $(( i * 30 )))"
   aws events put-rule --name "$RULE" --schedule-expression "$EXPR" --region "$AWS_REGION" >/dev/null
