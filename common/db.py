@@ -1,85 +1,80 @@
-"""Schema and connection management.
+"""Connection management and schema migrations.
 
 Queries live in repository.py and rules live in service.py; this file owns only
-the shape of the database and how to open it. Deliberately stdlib-only, so the
-API container needs neither numpy nor pandas.
+how the database is opened and how its shape is kept current.
+
+`CREATE TABLE IF NOT EXISTS` creates tables on a fresh database and silently
+does nothing to an existing one, so adding a column would never reach a deployed
+instance. MIGRATIONS closes that: each entry runs once, in order, and the
+highest applied index is recorded in `meta`.
 """
 
 from __future__ import annotations
 
-import json
-import sqlite3
 from pathlib import Path
 
+from peewee import OperationalError, SqliteDatabase
 
-SCHEMA = """
-PRAGMA journal_mode=WAL;
+from .models import ALL_MODELS, Meta_, database
 
-CREATE TABLE IF NOT EXISTS jobs (
-    country      TEXT NOT NULL,
-    id           TEXT NOT NULL,
-    site         TEXT,
-    title        TEXT,
-    company      TEXT,
-    location     TEXT,
-    is_remote    INTEGER,
-    job_type     TEXT,
-    date_posted  TEXT,
-    job_url      TEXT,
-    min_amount   REAL,
-    max_amount   REAL,
-    currency     TEXT,
-    pay_interval TEXT,
-    is_tech      INTEGER NOT NULL DEFAULT 0,
-    description  TEXT,
-    first_seen   TEXT NOT NULL,
-    last_seen    TEXT NOT NULL,
-    seen_count   INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (country, id)
-);
-CREATE INDEX IF NOT EXISTS ix_jobs_country_tech ON jobs(country, is_tech);
-CREATE INDEX IF NOT EXISTS ix_jobs_lastseen     ON jobs(country, last_seen);
-CREATE INDEX IF NOT EXISTS ix_jobs_posted       ON jobs(country, date_posted);
+SCHEMA_VERSION_KEY = "schema_version"
 
--- One row per country per nightly run: the audit trail of what we actually saw.
-CREATE TABLE IF NOT EXISTS snapshots (
-    country       TEXT NOT NULL,
-    scrape_date   TEXT NOT NULL,
-    ran_at        TEXT NOT NULL,
-    duration_sec  REAL,
-    rows_seen     INTEGER,
-    new_jobs      INTEGER,
-    tech_jobs     INTEGER,
-    active_total  INTEGER,
-    tech_active   INTEGER,
-    remote_active INTEGER,
-    by_site       TEXT,
-    s3_key        TEXT,
-    ok            INTEGER NOT NULL DEFAULT 1,
-    note          TEXT,
-    PRIMARY KEY (country, scrape_date)
-);
-
-CREATE TABLE IF NOT EXISTS forecasts (
-    country      TEXT NOT NULL,
-    metric       TEXT NOT NULL,
-    generated_at TEXT NOT NULL,
-    payload      TEXT NOT NULL,
-    PRIMARY KEY (country, metric)
-);
-
-CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
-"""
+# Ordered, append-only. Each is (description, callable taking a migrator+db).
+# Never edit or reorder an entry that has shipped - add a new one.
+MIGRATIONS: list[tuple[str, object]] = []
 
 
-def connect(path: str | Path, read_only: bool = False) -> sqlite3.Connection:
+def connect(path: str | Path, read_only: bool = False) -> SqliteDatabase:
+    """Bind the model proxy to a SQLite file and return the database.
+
+    The API passes read_only=True, which opens a `mode=ro` URI handle: SQLite
+    itself then rejects writes, rather than trusting callers not to attempt any.
+    """
     path = Path(path)
     if read_only:
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=15)
+        db = SqliteDatabase(f"file:{path}?mode=ro", uri=True,
+                            pragmas={"busy_timeout": 15000})
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(path, timeout=30)
-        conn.executescript(SCHEMA)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=15000")
-    return conn
+        db = SqliteDatabase(str(path), pragmas={
+            # WAL is not optional here: it lets the API read while the worker
+            # writes, and it is the file Litestream tails to replicate.
+            "journal_mode": "wal",
+            "busy_timeout": 15000,
+            "foreign_keys": 0,
+        })
+    database.initialize(db)
+    db.connect(reuse_if_open=True)
+    if not read_only:
+        db.create_tables(ALL_MODELS, safe=True)
+        _migrate(db)
+    return db
+
+
+def _schema_version(db: SqliteDatabase) -> int:
+    try:
+        row = Meta_.get_or_none(Meta_.k == SCHEMA_VERSION_KEY)
+    except OperationalError:
+        return 0
+    return int(row.v) if row and str(row.v).isdigit() else 0
+
+
+def _migrate(db: SqliteDatabase) -> None:
+    """Apply any migrations this database has not seen, inside one transaction."""
+    from playhouse.migrate import SqliteMigrator
+
+    current = _schema_version(db)
+    pending = list(enumerate(MIGRATIONS))[current:]
+    if not pending:
+        return
+    migrator = SqliteMigrator(db)
+    with db.atomic():
+        for index, (label, fn) in pending:
+            fn(migrator, db)
+            print(f"[db] migration {index + 1}: {label}", flush=True)
+        Meta_.replace(k=SCHEMA_VERSION_KEY, v=str(len(MIGRATIONS))).execute()
+
+
+def close() -> None:
+    if not database.is_closed():
+        database.close()

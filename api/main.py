@@ -7,9 +7,10 @@ common/service.py and common/repository.py respectively.
 
 from __future__ import annotations
 
-import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+
+import peewee
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.gzip import GZipMiddleware
@@ -23,17 +24,33 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 STARTED = datetime.now(timezone.utc)
 
 
+_db = None
+
+
+def _database():
+    """Bind the model proxy once, not per request.
+
+    The models share a global DatabaseProxy, so re-initialising it on every
+    request would race between the threads FastAPI runs sync endpoints on.
+    Bind once; Peewee keeps the connection itself thread-local.
+    """
+    global _db
+    if _db is None:
+        if not config.DB_PATH.exists():
+            raise HTTPException(503, "dataset not built yet - the first scrape has not finished")
+        try:
+            _db = db.connect(config.DB_PATH, read_only=True)
+        except peewee.OperationalError:
+            raise HTTPException(503, "dataset not built yet - the first scrape has not finished")
+    return _db
+
+
 @contextmanager
 def services():
-    """One read-only connection per request, closed on the way out."""
-    try:
-        conn = db.connect(config.DB_PATH, read_only=True)
-    except sqlite3.OperationalError:
-        raise HTTPException(503, "dataset not built yet - the first scrape has not finished")
-    try:
-        yield service.build(conn)
-    finally:
-        conn.close()
+    """A per-request connection from the shared, read-only database."""
+    database = _database()
+    with database.connection_context():
+        yield service.build(database)
 
 
 @app.get("/api/health")

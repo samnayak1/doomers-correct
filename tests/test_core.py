@@ -226,7 +226,7 @@ def test_first_seen_never_moves_backwards():
                currency="INR", pay_interval=None, is_tech=1, description=None)
     service.build(conn).job_repo.upsert("india", [row], "2026-01-05")
     service.build(conn).job_repo.upsert("india", [row], "2026-01-09")
-    got = conn.execute("SELECT first_seen, last_seen, seen_count FROM jobs").fetchone()
+    got = conn.execute_sql("SELECT first_seen, last_seen, seen_count FROM jobs").fetchone()
     check("first_seen is stable, last_seen advances",
           tuple(got) == ("2026-01-05", "2026-01-09", 2), str(tuple(got)))
     conn.close()
@@ -304,7 +304,7 @@ def test_pipeline_end_to_end():
     conn = db.connect(dbp, read_only=True)
     check("snapshots recorded", len(service.build(conn).snapshot_repo.observed_dates("india")) == 9)
     check("descriptions dropped by default",
-          conn.execute("SELECT COUNT(*) FROM jobs WHERE description IS NOT NULL").fetchone()[0] == 0)
+          conn.execute_sql("SELECT COUNT(*) FROM jobs WHERE description IS NOT NULL").fetchone()[0] == 0)
     fc = service.build(conn).forecasts.get("india")
     check("forecast produced after 7+ days", fc is not None and fc["model"] == "linear",
           fc["model"] if fc else "none")

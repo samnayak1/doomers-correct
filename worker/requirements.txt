@@ -8,3 +8,4 @@ pandas==2.2.3
 scipy==1.15.3
 statsmodels==0.14.5
 boto3==1.35.92
+peewee==4.5.1
