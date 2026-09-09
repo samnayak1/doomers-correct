@@ -10,128 +10,98 @@
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-<div class="layout">
+<div class="page">
 
-  <aside class="rail">
-    <div class="rail-inner">
-      <header>
-        <h1>Are doomers correct?</h1>
-        <p class="tagline">
-          Tech job listings in <strong id="hero-country">India</strong>, counted every night
-          and extrapolated to 31 December 2027.
-        </p>
-      </header>
+  <header class="masthead">
+    <span class="wordmark">Are doomers correct?</span>
+    <nav class="controls">
+      <select id="scope" aria-label="Roles">
+        <option value="1" selected>Tech only</option>
+        <option value="0">All roles</option>
+      </select>
+      <select id="country" aria-label="Country"></select>
+    </nav>
+  </header>
 
-      <div class="pickers">
-        <label class="field" for="country">Country
-          <select id="country"></select>
-        </label>
-        <label class="field" for="scope">Roles
-          <select id="scope">
-            <option value="1" selected>Tech only</option>
-            <option value="0">All roles</option>
-          </select>
-        </label>
-      </div>
+  <p class="headline" id="headline"></p>
 
-      <section class="stats" id="stats" aria-label="Headline figures"></section>
+  <p class="statusline">
+    <span class="live">LIVE</span>
+    <span id="freshness"></span> <span class="sep">&middot;</span> Scraped nightly from public job boards and extrapolated to
+    31&nbsp;December&nbsp;2027. Inspired by
+    <a href="https://doomersareretardedcommunists.com/" rel="noopener noreferrer" target="_blank">@usr_bin_roygbiv</a>'s
+    tracker for the US &mdash; independent rebuild, no affiliation.
+  </p>
 
-      <p class="freshness" id="freshness"></p>
+  <div class="tabs" role="tablist">
+    <button class="tab is-active" id="tab-chart" role="tab" aria-controls="panel-chart" data-panel="chart">Trend</button>
+    <button class="tab" id="tab-listings" role="tab" aria-controls="panel-listings" data-panel="listings">Listings</button>
+  </div>
 
-      <p class="credit">
-        Inspired by <strong>@usr_bin_roygbiv</strong>'s website
-        (<a href="https://doomersareretardedcommunists.com/" rel="noopener noreferrer" target="_blank">original site</a>,
-        <a href="https://x.com/usr_bin_roygbiv" rel="noopener noreferrer" target="_blank">X&nbsp;profile</a>),
-        which tracks the United States. This is an independent rebuild covering India and
-        the United States, with its own data collection and its own forecasting model.
-        No affiliation.
-      </p>
-
-      <details class="method">
-        <summary>Method and caveats</summary>
-        <p><strong>Collection.</strong> Every night at midnight a worker queries public job boards
-        through <a href="https://github.com/speedyapply/JobSpy" rel="noopener noreferrer" target="_blank">JobSpy</a>
-        and stores what it finds in SQLite. Every run issues the same set of queries — sampling a
-        rotating subset would be cheaper, but then the count would move with the rotation rather
-        than with the market.</p>
-        <p><strong>The shaded region.</strong> Days before our first scrape are reconstructed from
-        posting dates. We can only reconstruct listings that were <em>still live</em> when we first
-        looked, so that stretch understates the past and slopes upward artificially. It is shown
-        for context and is <em>never</em> used to fit the model.</p>
-        <p><strong>The forecast.</strong> For the first month of collected data the projection is an
-        ordinary least-squares line. After that it switches to a non-seasonal ARIMA(p,&nbsp;d,&nbsp;q),
-        fitted by Hannan–Rissanen and selected by AICc, on a trailing window of recent days. It is
-        fitted in log space and damped, so it flattens instead of running off the chart. The band is
-        a 95% prediction interval.</p>
-      </details>
-
-      <footer>Data from public job boards. Not affiliated with any board or employer.</footer>
+  <section class="panel" id="panel-chart" role="tabpanel" aria-labelledby="tab-chart">
+    <p class="caption"><span id="chart-title">Active tech listings</span> <span id="chart-sub"></span></p>
+    <div class="chart-scroll"><div class="chart-host" id="chart"></div></div>
+    <div class="legend">
+      <span><i class="solid"></i>Observed</span>
+      <span id="lg-forecast"><i class="dashed"></i>Forecast</span>
+      <span id="lg-band"><i class="swatch"></i>95% interval</span>
+      <span id="lg-recon" hidden><i class="recon"></i>Reconstructed from posting dates</span>
     </div>
-  </aside>
+    <p class="note" id="model-note"></p>
+  </section>
 
-  <main class="content">
-    <section class="card" aria-labelledby="chart-title">
-      <div class="card-head">
-        <h2 id="chart-title">Active tech listings</h2>
-        <span class="sub" id="chart-sub"></span>
-      </div>
-      <div class="chart-scroll">
-        <div class="chart-host" id="chart"></div>
-      </div>
-      <div class="legend">
-        <span><i class="solid"></i>Observed</span>
-        <span id="lg-forecast"><i class="dashed"></i>Forecast</span>
-        <span id="lg-band"><i class="swatch"></i>95% interval</span>
-        <span id="lg-recon" hidden><i class="recon"></i>Reconstructed from posting dates</span>
-      </div>
-      <p class="note" id="model-note"></p>
-    </section>
+  <section class="panel" id="panel-listings" role="tabpanel" aria-labelledby="tab-listings" hidden>
+    <p class="caption">Most recently posted first. <span id="count"></span></p>
+    <div class="filters">
+      <input type="search" id="q" placeholder="Search title, company or city" autocomplete="off">
+      <select id="site"><option value="">All sources</option></select>
+      <select id="remote">
+        <option value="">Any location type</option>
+        <option value="yes">Remote</option>
+        <option value="no">On-site / hybrid</option>
+      </select>
+      <select id="sort">
+        <option value="date_posted">Newest posted</option>
+        <option value="first_seen">Newest seen</option>
+        <option value="salary">Highest salary</option>
+        <option value="title">Title A&ndash;Z</option>
+        <option value="company">Company A&ndash;Z</option>
+      </select>
+    </div>
+    <div class="table-scroll">
+      <table id="jobs">
+        <thead><tr>
+          <th>Title</th><th>Company</th><th>Location</th><th>Source</th>
+          <th>Posted</th><th>Salary</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <button id="prev" type="button">Previous</button>
+      <button id="next" type="button">Next</button>
+    </div>
+  </section>
 
-    <section class="card listings">
-      <div class="card-head">
-        <h2>Current listings</h2>
-        <span class="sub" id="count"></span>
-      </div>
-      <div class="filters">
-        <label class="field" for="q">Search
-          <input type="search" id="q" placeholder="title, company or city" autocomplete="off">
-        </label>
-        <label class="field" for="site">Source
-          <select id="site"><option value="">All sources</option></select>
-        </label>
-        <label class="field" for="remote">Remote
-          <select id="remote">
-            <option value="">Any</option>
-            <option value="yes">Remote</option>
-            <option value="no">On-site / hybrid</option>
-          </select>
-        </label>
-        <label class="field" for="sort">Sort
-          <select id="sort">
-            <option value="date_posted">Newest posted</option>
-            <option value="first_seen">Newest seen</option>
-            <option value="salary">Highest salary</option>
-            <option value="title">Title A–Z</option>
-            <option value="company">Company A–Z</option>
-          </select>
-        </label>
-      </div>
-      <div class="table-scroll">
-        <table id="jobs">
-          <thead><tr>
-            <th>Title</th><th>Company</th><th>Location</th><th>Source</th>
-            <th>Posted</th><th>Salary</th><th></th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div class="pager">
-        <button id="prev" type="button">Previous</button>
-        <button id="next" type="button">Next</button>
-      </div>
-    </section>
-  </main>
+  <details class="method">
+    <summary>Method and caveats</summary>
+    <p><strong>Collection.</strong> Every night at midnight a worker queries public job boards
+    through <a href="https://github.com/speedyapply/JobSpy" rel="noopener noreferrer" target="_blank">JobSpy</a>
+    and stores what it finds in SQLite. Every run issues the same set of queries &mdash; sampling a
+    rotating subset would be cheaper, but then the count would move with the rotation rather
+    than with the market.</p>
+    <p><strong>The shaded region.</strong> Days before our first scrape are reconstructed from
+    posting dates. We can only reconstruct listings that were <em>still live</em> when we first
+    looked, so that stretch understates the past and slopes upward artificially. It is shown
+    for context and is <em>never</em> used to fit the model.</p>
+    <p><strong>The forecast.</strong> For the first month of collected data the projection is an
+    ordinary least-squares line. After that it switches to a non-seasonal ARIMA(p,&nbsp;d,&nbsp;q),
+    with the differencing order chosen by an augmented Dickey&ndash;Fuller test and the rest by AICc.
+    It is fitted in log space and damped, so it flattens instead of running off the chart. The band
+    is a 95% prediction interval.</p>
+  </details>
 
+  <footer>Data from public job boards. Not affiliated with any board or employer.</footer>
 </div>
 <script type="module" src="/app.js"></script>
 </body>

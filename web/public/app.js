@@ -37,41 +37,26 @@ function fmtSalary(row) {
   return `${sym}${body}`;
 }
 
-/* ── stat tiles ────────────────────────────────────────────────────────── */
-function renderStats(d) {
+/* ── headline ─────────────────────────────────────────────────────────────
+   Oversized numbers set inline in a sentence rather than a row of cards. */
+function renderHeadline(d) {
   const s = d.summary || {};
   const fc = d.forecast;
+  const end = fc && fc.points.length ? fc.points[fc.points.length - 1] : null;
   const delta = s.delta_pct;
-  const endPoint = fc && fc.points.length ? fc.points[fc.points.length - 1] : null;
-  const tiles = [
-    {
-      k: 'Active listings',
-      v: nf.format(s.tech_active || 0),
-      s: s.latest_scrape ? `as of ${fmtDate(s.latest_scrape)}` : 'first scrape still running',
-    },
-    {
-      k: 'Change vs last run',
-      v: delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%`,
-      s: plural(s.new_jobs || 0, 'new listing'),
-      cls: delta == null ? '' : (delta >= 0 ? 'up' : 'down'),
-    },
-    {
-      k: 'Remote',
-      v: s.tech_active ? `${Math.round((s.remote_active / s.tech_active) * 100)}%` : '—',
-      s: plural(s.remote_active || 0, 'listing'),
-    },
-    {
-      k: 'Forecast · Dec 2027',
-      v: endPoint ? nf.format(Math.round(endPoint.yhat)) : '—',
-      s: fc ? fc.model : `needs ${d.config.arima_min_points}+ days`,
-    },
+  const parts = [
+    `<b>${nf.format(s.tech_active || 0)}</b> active ${state.tech ? 'tech ' : ''}listings`,
+    `<b>${nf.format(s.new_jobs || 0)}</b> new in the last run`,
   ];
-  $('stats').innerHTML = tiles.map((t) => `
-    <div class="stat">
-      <div class="k">${t.k}</div>
-      <div class="v ${t.cls || ''}">${t.v}</div>
-      <div class="s">${t.s}</div>
-    </div>`).join('');
+  if (delta != null) {
+    parts.push(`<b class="${delta >= 0 ? 'up' : 'down'}">${delta > 0 ? '+' : ''}`
+      + `${delta.toFixed(1)}%</b> vs the run before`);
+  }
+  if (s.tech_active) {
+    parts.push(`<b>${Math.round((s.remote_active / s.tech_active) * 100)}%</b> remote`);
+  }
+  if (end) parts.push(`<b>${nf.format(Math.round(end.yhat))}</b> projected for Dec&nbsp;2027`);
+  $('headline').innerHTML = parts.join('<span class="sep">&middot;</span>');
 }
 
 /* ── chart ─────────────────────────────────────────────────────────────── */
@@ -147,21 +132,20 @@ async function loadSeries() {
   try {
     const d = await api('/api/series', { country: state.country, tech: state.tech });
     lastSeries = d;
-    $('hero-country').textContent = d.prose || d.label;
     $('chart-title').textContent = state.tech ? 'Active tech listings' : 'All active listings';
     $('freshness').textContent = d.summary.latest_scrape
       ? `Last scrape ${fmtDate(d.summary.latest_scrape)} · ${plural(d.summary.tracked_total, 'listing')} tracked`
       : d.summary.tracked_total
         ? `First scrape in progress · ${plural(d.summary.tracked_total, 'listing')} so far`
         : 'Awaiting first scrape';
-    renderStats(d);
+    renderHeadline(d);
     renderChart(d);
     $('site').innerHTML = '<option value="">All sources</option>'
       + (d.summary.by_site || []).map((s) => `<option value="${esc(s.site)}">${esc(s.site)} (${nf.format(s.n)})</option>`).join('');
     $('site').value = state.site;
   } catch (err) {
     $('chart').innerHTML = `<div class="empty">Could not load the series — ${esc(err.message)}</div>`;
-    $('stats').innerHTML = '';
+    $('headline').textContent = '';
   }
 }
 
@@ -198,6 +182,20 @@ $('q').addEventListener('input', (e) => {
 });
 $('prev').addEventListener('click', () => { state.offset = Math.max(0, state.offset - state.limit); loadJobs(); });
 $('next').addEventListener('click', () => { state.offset += state.limit; loadJobs(); });
+
+/* The chart sizes itself from its container's width, which is 0 while the panel
+   is hidden — so it must be redrawn when its tab becomes visible, not just on
+   resize. */
+document.querySelectorAll('.tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const target = btn.dataset.panel;
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+    for (const name of ['chart', 'listings']) {
+      $(`panel-${name}`).hidden = name !== target;
+    }
+    if (target === 'chart' && lastSeries) renderChart(lastSeries);
+  });
+});
 
 let resizeTimer = null;
 addEventListener('resize', () => {
