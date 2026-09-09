@@ -183,20 +183,6 @@ $('q').addEventListener('input', (e) => {
 $('prev').addEventListener('click', () => { state.offset = Math.max(0, state.offset - state.limit); loadJobs(); });
 $('next').addEventListener('click', () => { state.offset += state.limit; loadJobs(); });
 
-/* The chart sizes itself from its container's width, which is 0 while the panel
-   is hidden — so it must be redrawn when its tab becomes visible, not just on
-   resize. */
-document.querySelectorAll('.tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const target = btn.dataset.panel;
-    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b === btn));
-    for (const name of ['chart', 'listings']) {
-      $(`panel-${name}`).hidden = name !== target;
-    }
-    if (target === 'chart' && lastSeries) renderChart(lastSeries);
-  });
-});
-
 let resizeTimer = null;
 addEventListener('resize', () => {
   clearTimeout(resizeTimer);

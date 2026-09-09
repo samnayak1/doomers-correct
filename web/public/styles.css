@@ -77,22 +77,12 @@ select:focus-visible, input:focus-visible, button:focus-visible {
   border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; margin-right: 6px;
 }
 
-/* ── Tab strip ────────────────────────────────────────────────────────────── */
-.tabs { display: flex; gap: 2px; }
-.tab {
-  font: inherit; font-size: 14px; cursor: pointer; color: var(--ink-soft);
-  background: var(--panel); border: 1px solid var(--panel-edge); border-bottom: 0;
-  border-radius: 4px 4px 0 0; padding: 9px 18px; min-height: 40px;
-}
-.tab.is-active { background: var(--bg); color: var(--ink); font-weight: 600;
-  border-color: var(--panel-edge); position: relative; top: 1px; }
-.tab:not(.is-active):hover { color: var(--ink); }
-
+/* ── Panels ───────────────────────────────────────────────────────────────── */
 .panel {
   background: var(--panel); border: 1px solid var(--panel-edge);
-  border-radius: 0 4px 4px 4px; padding: 16px 18px 18px;
+  border-radius: 4px; padding: 16px 18px 18px; margin-bottom: 16px;
 }
-.panel[hidden] { display: none; }
+.panel-title { margin: 0 0 4px; font-size: 16px; font-weight: 700; color: var(--ink); }
 .caption { margin: 0 0 12px; font-size: 13.5px; font-style: italic; color: var(--ink-soft); }
 .caption #chart-title { font-style: normal; font-weight: 600; color: var(--ink); }
 
@@ -163,7 +153,6 @@ footer { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border
   .headline b { font-size: 25px; }
   .filters { grid-template-columns: 1fr; }
   select, input[type="search"] { font-size: 16px; min-height: 42px; }  /* stops iOS zooming */
-  .tab { flex: 1 1 0; text-align: center; padding: 9px 10px; }
 
   .table-scroll { overflow-x: visible; border: 0; background: transparent; }
   #jobs, #jobs tbody, #jobs tr, #jobs td { display: block; width: 100%; }

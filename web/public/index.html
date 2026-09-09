@@ -33,12 +33,7 @@
     tracker for the US &mdash; independent rebuild, no affiliation.
   </p>
 
-  <div class="tabs" role="tablist">
-    <button class="tab is-active" id="tab-chart" role="tab" aria-controls="panel-chart" data-panel="chart">Trend</button>
-    <button class="tab" id="tab-listings" role="tab" aria-controls="panel-listings" data-panel="listings">Listings</button>
-  </div>
-
-  <section class="panel" id="panel-chart" role="tabpanel" aria-labelledby="tab-chart">
+  <section class="panel" id="panel-chart" aria-labelledby="chart-title">
     <p class="caption"><span id="chart-title">Active tech listings</span> <span id="chart-sub"></span></p>
     <div class="chart-scroll"><div class="chart-host" id="chart"></div></div>
     <div class="legend">
@@ -50,7 +45,8 @@
     <p class="note" id="model-note"></p>
   </section>
 
-  <section class="panel" id="panel-listings" role="tabpanel" aria-labelledby="tab-listings" hidden>
+  <section class="panel" id="panel-listings" aria-labelledby="listings-title">
+    <h2 class="panel-title" id="listings-title">Current listings</h2>
     <p class="caption">Most recently posted first. <span id="count"></span></p>
     <div class="filters">
       <input type="search" id="q" placeholder="Search title, company or city" autocomplete="off">
