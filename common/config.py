@@ -53,7 +53,10 @@ COUNTRIES: dict[str, dict] = {
         "currency": "INR",
         "locations": _locs("LOCATIONS_INDIA", ["India"]),
 
-        "sites": _sites("SITES_INDIA", ["indeed", "naukri", "linkedin"]),
+        # Naukri is deliberately absent: it answers 406 "recaptcha required"
+        # from every IP tried, succeeding at the HTTP level while returning zero
+        # rows. Add it back via SITES_INDIA once you have proxies.
+        "sites": _sites("SITES_INDIA", ["indeed", "linkedin"]),
     },
     "usa": {
         "label": "United States",

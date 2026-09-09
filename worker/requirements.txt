@@ -1,4 +1,10 @@
 python-jobspy==1.1.82
 numpy==1.26.3
 pandas==2.2.3
+# Pinned together on purpose. JobSpy pins numpy to exactly 1.26.3; a bare
+# `pip install statsmodels` resolves numpy 2.x and then dies on scipy's private
+# API (statsmodels 0.14.4 + scipy 1.18 -> ImportError: _lazywhere). Verified
+# working set: numpy 1.26.3 / scipy 1.15.3 / statsmodels 0.14.5.
+scipy==1.15.3
+statsmodels==0.14.5
 boto3==1.35.92

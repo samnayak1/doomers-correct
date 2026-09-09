@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
  && find "$SP" -name '__pycache__' -type d -prune -exec rm -rf {} + \
  && find "$SP" -name 'tests' -type d -prune -exec rm -rf {} + \
     # Fail the build loudly here rather than at midnight in production.
- && python -c "import jobspy, tls_client, pandas, numpy, boto3; print('import check OK')"
+ && python -c "import jobspy, tls_client, pandas, numpy, scipy, statsmodels, boto3; from statsmodels.tsa.arima.model import ARIMA; print('import check OK')"
 
 COPY common/ /app/common/
 COPY scripts/ /app/scripts/

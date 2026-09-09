@@ -42,7 +42,7 @@ degrade to no-ops and everything else still works.
 | `RUN_ON_START` | `true` | Scrape immediately on boot |
 | `RESULTS_WANTED` | `60` | Per (site, term, location); main driver of runtime |
 | `PROXIES` | — | Needed for Naukri; most boards block unproxied IPs |
-| `SITES_INDIA` etc. | `indeed,linkedin` (+`naukri`) | Per-country board list |
+| `SITES_INDIA` etc. | `indeed,linkedin` | Per-country board list; naukri needs proxies |
 | `LITESTREAM_SYNC_INTERVAL` | `5m` | Worst-case data loss window |
 | `ARIMA_MIN_POINTS` | `30` | Linear regression below this, ARIMA above |
 | `FORECAST_DAMPING` | `0.98` | `1.0` makes the 2-year forecast explode |
