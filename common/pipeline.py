@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timezone
 
-from . import config, db, s3store, service
+from . import classify, config, db, s3store, service
 
 
 def log(msg: str) -> None:
@@ -80,6 +80,16 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
     log(f"[run] {country}: {total_rows} rows ({new_total} new) from "
         f"{{{', '.join(f'{k}={v}' for k, v in sorted(by_site.items()))}}}, "
         f"tech active = {active_total}")
+
+    # Label any listing that has no role yet. Bounded per run so a first-time
+    # backfill of thousands drains over several nights instead of stalling one.
+    if classify.enabled():
+        pending = svc.job_repo.unclassified(country, config.CLASSIFY_MAX_PER_RUN)
+        if pending:
+            wrote = svc.job_repo.set_roles(classify.classify(pending, log=log))
+            remaining = len(svc.job_repo.unclassified(country, 1))
+            log(f"[classify] {country}: labelled {wrote}/{len(pending)}"
+                + (" - more pending, will continue next run" if remaining else " - all caught up"))
 
     svc.forecasts.refresh(country, log=log)
     # Only the Lambda path backs the file up here; on EC2, Litestream has it.

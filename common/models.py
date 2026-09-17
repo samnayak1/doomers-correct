@@ -41,6 +41,7 @@ class Job(BaseModel):
     currency = TextField(null=True)
     pay_interval = TextField(null=True)
     is_tech = IntegerField(default=0, index=True)
+    role = TextField(null=True, index=True)   # set once by common/classify.py
     description = TextField(null=True)
     first_seen = TextField()
     last_seen = TextField(index=True)

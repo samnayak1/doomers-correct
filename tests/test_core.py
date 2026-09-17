@@ -293,6 +293,49 @@ def test_fit_window_excludes_reconstructed_days():
     conn.close()
 
 
+def test_role_classification_degrades_without_a_key():
+    """No key, an API error, a short response - none of it may break a scrape.
+
+    classify() is called inside the nightly pipeline, so its failure mode has to
+    be "rows stay unlabelled and get retried", never an exception.
+    """
+    from common import classify
+
+    saved = config.GEMINI_API_KEY
+    try:
+        config.GEMINI_API_KEY = ""
+        check("no key -> disabled", classify.enabled() is False)
+        check("no key -> returns nothing, raises nothing",
+              classify.classify([("india", "1", "Backend Engineer")], log=lambda *_: None) == [])
+
+        config.GEMINI_API_KEY = "test-key"
+        check("key present -> enabled", classify.enabled() is True)
+
+        # The response schema pins the array length and the enum; this checks the
+        # second line of defence, for a truncated or scrambled reply.
+        import common.classify as c
+        real = c.classify_batch
+        try:
+            c.classify_batch = lambda titles, log=print: {0: "backend", 99: "frontend", 1: "not_a_category"}
+            out = classify.classify([("india", "a", "X"), ("india", "b", "Y")], log=lambda *_: None)
+            check("out-of-range and unknown labels are dropped",
+                  out == [("india", "a", "backend")], str(out))
+        finally:
+            c.classify_batch = real
+    finally:
+        config.GEMINI_API_KEY = saved
+
+
+def test_role_enum_has_no_duplicates_and_includes_other():
+    check("categories are unique",
+          len(config.ROLE_CATEGORIES) == len(set(config.ROLE_CATEGORIES)))
+    check("an escape hatch exists", "other" in config.ROLE_CATEGORIES)
+    check("requested categories present",
+          {"qa", "firmware_engineer", "electronics_engineer"} <= set(config.ROLE_CATEGORIES))
+    check("software_engineer removed as asked",
+          "software_engineer" not in config.ROLE_CATEGORIES)
+
+
 def test_tech_classifier():
     from common.scrape import is_tech
     for title, want in [("Senior Software Engineer", True), ("SDE II", True),

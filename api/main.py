@@ -95,12 +95,13 @@ def series(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1):
 
 @app.get("/api/jobs")
 def jobs(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1, q: str = "",
-         site: str = "", remote: str = "", sort: str = "date_posted",
+         site: str = "", remote: str = "", role: str = "", sort: str = "date_posted",
          limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
     country = config.country_key(country)
     with services() as svc:
         out = svc.jobs.list(country, tech_only=bool(tech), q=q.strip()[:80],
-                            site=site.strip()[:24], remote=remote, sort=sort,
+                            site=site.strip()[:24], remote=remote,
+                            role=role.strip()[:40], sort=sort,
                             limit=limit, offset=offset)
     out.update({"country": country, "limit": limit, "offset": offset,
                 "currency": config.COUNTRIES[country]["currency"]})

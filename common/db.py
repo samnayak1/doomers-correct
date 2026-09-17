@@ -19,9 +19,25 @@ from .models import ALL_MODELS, Meta_, database
 
 SCHEMA_VERSION_KEY = "schema_version"
 
+def _add_job_role(migrator, db) -> None:
+    """jobs.role, set once per listing by common/classify.py."""
+    from peewee import TextField
+    from playhouse.migrate import migrate
+
+    # create_tables() builds a fresh database straight from the model, which
+    # already has the column; only an existing database needs the ALTER.
+    existing = {row[1] for row in db.execute_sql("PRAGMA table_info(jobs)").fetchall()}
+    if "role" in existing:
+        return
+    migrate(migrator.add_column("jobs", "role", TextField(null=True)))
+    db.execute_sql("CREATE INDEX IF NOT EXISTS jobs_role ON jobs (role)")
+
+
 # Ordered, append-only. Each is (description, callable taking a migrator+db).
 # Never edit or reorder an entry that has shipped - add a new one.
-MIGRATIONS: list[tuple[str, object]] = []
+MIGRATIONS: list[tuple[str, object]] = [
+    ("add jobs.role", _add_job_role),
+]
 
 
 def connect(path: str | Path, read_only: bool = False) -> SqliteDatabase:

@@ -143,6 +143,15 @@ async function loadSeries() {
     $('site').innerHTML = '<option value="">All sources</option>'
       + (d.summary.by_site || []).map((s) => `<option value="${esc(s.site)}">${esc(s.site)} (${nf.format(s.n)})</option>`).join('');
     $('site').value = state.site;
+
+    // Roles come from what has actually been labelled, so the dropdown never
+    // offers a category with nothing behind it.
+    const roles = d.summary.by_role || [];
+    const pretty = (r) => r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    $('role').innerHTML = '<option value="">All roles</option>'
+      + roles.map((r) => `<option value="${esc(r.role)}">${esc(pretty(r.role))} (${nf.format(r.n)})</option>`).join('');
+    $('role').value = state.role;
+    $('role').hidden = roles.length === 0;
   } catch (err) {
     $('chart').innerHTML = `<div class="empty">Could not load the series — ${esc(err.message)}</div>`;
     $('headline').textContent = '';
@@ -153,7 +162,8 @@ async function loadJobs() {
   try {
     renderJobs(await api('/api/jobs', {
       country: state.country, tech: state.tech, q: state.q, site: state.site,
-      remote: state.remote, sort: state.sort, limit: state.limit, offset: state.offset,
+      remote: state.remote, role: state.role, sort: state.sort,
+      limit: state.limit, offset: state.offset,
     }));
   } catch (err) {
     $('jobs').querySelector('tbody').innerHTML =
@@ -170,9 +180,10 @@ function reloadAll() {
   loadSeries(); loadJobs();
 }
 
-$('country').addEventListener('change', (e) => { state.country = e.target.value; state.site = ''; reloadAll(); });
+$('country').addEventListener('change', (e) => { state.country = e.target.value; state.site = ''; state.role = ''; reloadAll(); });
 $('scope').addEventListener('change', (e) => { state.tech = +e.target.value; reloadAll(); });
 $('site').addEventListener('change', (e) => { state.site = e.target.value; state.offset = 0; loadJobs(); });
+$('role').addEventListener('change', (e) => { state.role = e.target.value; state.offset = 0; loadJobs(); });
 $('remote').addEventListener('change', (e) => { state.remote = e.target.value; state.offset = 0; loadJobs(); });
 $('sort').addEventListener('change', (e) => { state.sort = e.target.value; state.offset = 0; loadJobs(); });
 $('q').addEventListener('input', (e) => {

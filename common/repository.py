@@ -29,7 +29,7 @@ JOB_COLUMNS = [
 LIST_FIELDS = [
     Job.id, Job.site, Job.title, Job.company, Job.location, Job.is_remote,
     Job.job_type, Job.date_posted, Job.job_url, Job.min_amount, Job.max_amount,
-    Job.currency, Job.pay_interval, Job.first_seen, Job.last_seen,
+    Job.currency, Job.pay_interval, Job.role, Job.first_seen, Job.last_seen,
 ]
 
 SNAPSHOT_FIELDS = [
@@ -105,8 +105,8 @@ class JobRepository:
         return q.tuples().iterator()
 
     def search(self, country: str, *, tech_only: bool = True, q: str = "", site: str = "",
-               remote: str = "", sort: str = "date_posted", limit: int = 200,
-               offset: int = 0) -> tuple[int, list[dict]]:
+               remote: str = "", role: str = "", sort: str = "date_posted",
+               limit: int = 200, offset: int = 0) -> tuple[int, list[dict]]:
         where = Job.country == country
         if tech_only:
             where &= Job.is_tech == 1
@@ -115,6 +115,8 @@ class JobRepository:
             where &= (Job.title ** like) | (Job.company ** like) | (Job.location ** like)
         if site:
             where &= Job.site == site
+        if role:
+            where &= Job.role == role
         if remote == "yes":
             where &= Job.is_remote == 1
         elif remote == "no":
@@ -145,6 +147,33 @@ class JobRepository:
         if seen_on_or_after:
             where &= Job.last_seen >= seen_on_or_after
         return Job.select().where(where).count()
+
+    def unclassified(self, country: str, limit: int) -> list[tuple[str, str, str]]:
+        """(country, id, title) for tech listings with no role yet."""
+        return list(
+            Job.select(Job.country, Job.id, Job.title)
+               .where((Job.country == country) & (Job.is_tech == 1)
+                      & Job.role.is_null() & Job.title.is_null(False))
+               .order_by(Job.first_seen.desc()).limit(limit).tuples()
+        )
+
+    def set_roles(self, labelled: list[tuple[str, str, str]]) -> int:
+        """Write role labels back. One statement per row, batched in a transaction."""
+        if not labelled:
+            return 0
+        with self.db.atomic():
+            for country, jid, role in labelled:
+                (Job.update(role=role)
+                    .where((Job.country == country) & (Job.id == jid)).execute())
+        return len(labelled)
+
+    def count_by_role(self, country: str) -> list[dict]:
+        n = pw.fn.COUNT(pw.SQL("*")).alias("n")
+        return list(
+            Job.select(Job.role, n)
+               .where((Job.country == country) & (Job.is_tech == 1) & Job.role.is_null(False))
+               .group_by(Job.role).order_by(pw.SQL("n").desc()).dicts()
+        )
 
     def count_seen_on(self, country: str, day: str) -> int:
         return Job.select().where(

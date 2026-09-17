@@ -110,6 +110,28 @@ PROXIES = [p.strip() for p in os.environ.get("PROXIES", "").split(",") if p.stri
 # stale posting stretches the x-axis across years of days we never observed.
 RECONSTRUCT_DAYS = _int("RECONSTRUCT_DAYS", 90)
 
+# --- role classification (Gemini) -------------------------------------------- #
+# Titles are classified once, by an LLM, and the answer is stored on the row.
+# Only rows with no role yet are ever sent, so nightly cost stays flat as the
+# table grows rather than scaling with it.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+CLASSIFY_BATCH = _int("CLASSIFY_BATCH", 50)          # titles per request
+CLASSIFY_MAX_PER_RUN = _int("CLASSIFY_MAX_PER_RUN", 1500)  # bounds a backfill
+CLASSIFY_TIMEOUT = _int("CLASSIFY_TIMEOUT", 60)
+
+# The model is given exactly these and cannot return anything else — they are
+# an enum in the response schema. `other` exists so a title that fits none is
+# labelled honestly instead of being forced into the nearest wrong bucket.
+ROLE_CATEGORIES = [
+    "backend", "frontend", "full_stack", "mobile", "web_developer",
+    "devops", "sre", "system_engineer", "security", "it_support",
+    "data_engineer", "data_scientist", "aiml",
+    "embedded_engineer", "firmware_engineer", "electronics_engineer",
+    "game_developer", "qa", "forward_deployed_engineer",
+    "product_management", "sales_engineer", "other",
+]
+
 # --- forecast --------------------------------------------------------------- #
 FORECAST_UNTIL = os.environ.get("FORECAST_UNTIL", "2027-12-31")
 FORECAST_MIN_POINTS = _int("FORECAST_MIN_POINTS", 7)    # below this: no forecast at all

@@ -139,6 +139,7 @@ class SeriesService:
             "scrapes": self.snapshots.count_ok(country),
             "tracked_total": self.jobs.count(country),
             "by_site": self.jobs.count_by_site(country),
+            "by_role": self.jobs.count_by_role(country),
             "s3_key": snap["s3_key"] if snap else None,
         }
         if snap and prev and prev["tech_active"]:
