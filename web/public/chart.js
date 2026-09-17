@@ -24,24 +24,6 @@ function monthTicks(d0, d1, maxTicks) {
   return out.filter((_, i) => i % stride === 0);
 }
 
-/** Shade the stretch reconstructed from posting dates, before the first scrape. */
-const reconstructedBand = {
-  id: 'reconstructedBand',
-  beforeDatasetsDraw(chart, _args, opts) {
-    if (!opts || opts.until == null) return;
-    const { ctx, chartArea: area, scales: { x } } = chart;
-    const right = Math.min(x.getPixelForValue(opts.until), area.right);
-    if (right <= area.left) return;
-    ctx.save();
-    ctx.fillStyle = token('--recon') || 'rgba(0,0,0,.06)';
-    ctx.fillRect(area.left, area.top, right - area.left, area.bottom - area.top);
-    ctx.fillStyle = token('--text-muted') || '#888';
-    ctx.font = '10.5px system-ui, sans-serif';
-    if (right - area.left > 110) ctx.fillText('RECONSTRUCTED', area.left + 7, area.top + 14);
-    ctx.restore();
-  },
-};
-
 /** One direct label at the end of the horizon — never a number on every point. */
 const endLabel = {
   id: 'endLabel',
@@ -58,7 +40,7 @@ const endLabel = {
 };
 
 export function drawChart(host, data) {
-  const { history = [], forecast = [], observedFrom = null } = data;
+  const { history = [], forecast = [] } = data;
 
   if (host._chart) { host._chart.destroy(); host._chart = null; }
   host.textContent = '';
@@ -68,7 +50,7 @@ export function drawChart(host, data) {
     p.className = 'empty';
     p.textContent = 'No data yet — the first scrape has not completed.';
     host.appendChild(p);
-    return { hasReconstructed: false };
+    return;
   }
 
   const canvas = document.createElement('canvas');
@@ -80,11 +62,6 @@ export function drawChart(host, data) {
   const fc = forecast.map((d) => ({ x: toDay(d.date), y: +d.yhat, lo: +d.lo, hi: +d.hi }));
   const x0 = hist[0].x;
   const x1 = (fc.length ? fc[fc.length - 1] : hist[hist.length - 1]).x;
-
-  // Everything left of the first completed scrape is reconstructed. Before any
-  // scrape finishes there is no observed data at all, so the whole plot is.
-  const reconUntil = observedFrom ? toDay(observedFrom) : hist[hist.length - 1].x;
-  const hasReconstructed = reconUntil > x0;
 
   const s1 = token('--series-1') || '#0a84c2';
   const s2 = token('--series-2') || '#e8590c';
@@ -128,7 +105,7 @@ export function drawChart(host, data) {
   host._chart = new Chart(canvas, {
     type: 'line',
     data: { datasets },
-    plugins: [reconstructedBand, endLabel],
+    plugins: [endLabel],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -186,7 +163,6 @@ export function drawChart(host, data) {
             },
           },
         },
-        reconstructedBand: { until: hasReconstructed ? reconUntil : null },
         endLabel: last
           ? { text: `${fmtInt(last.y)} · ${last.x && fromDay(last.x).toISOString().slice(0, 7)}`, y: 0 }
           : {},
@@ -201,5 +177,4 @@ export function drawChart(host, data) {
     host._chart.update('none');
   }
 
-  return { hasReconstructed };
 }

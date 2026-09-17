@@ -45,7 +45,6 @@
       <span><i class="solid"></i>Observed</span>
       <span id="lg-forecast"><i class="dashed"></i>Forecast</span>
       <span id="lg-band"><i class="swatch"></i>95% interval</span>
-      <span id="lg-recon" hidden><i class="recon"></i>Reconstructed from posting dates</span>
     </div>
     <p class="note" id="model-note"></p>
   </section>
@@ -92,10 +91,6 @@
     and stores what it finds in SQLite. Every run issues the same set of queries &mdash; sampling a
     rotating subset would be cheaper, but then the count would move with the rotation rather
     than with the market.</p>
-    <p><strong>The shaded region.</strong> Days before our first scrape are reconstructed from
-    posting dates. We can only reconstruct listings that were <em>still live</em> when we first
-    looked, so that stretch understates the past and slopes upward artificially. It is shown
-    for context and is <em>never</em> used to fit the model.</p>
     <p><strong>The forecast.</strong> For the first month of collected data the projection is an
     ordinary least-squares line. After that it switches to a non-seasonal ARIMA(p,&nbsp;d,&nbsp;q),
     with the differencing order chosen by an augmented Dickey&ndash;Fuller test and the rest by AICc.

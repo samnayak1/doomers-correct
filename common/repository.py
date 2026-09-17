@@ -196,7 +196,7 @@ class SnapshotRepository:
                         .limit(1).offset(offset).dicts().first())
 
     def observed_dates(self, country: str) -> list[str]:
-        """The days a scrape actually completed. Anything else on the chart is reconstructed."""
+        """The days a scrape actually completed — where the chart begins."""
         return [r[0] for r in (
             Snapshot.select(Snapshot.scrape_date)
                     .where((Snapshot.country == country) & (Snapshot.ok == 1))

@@ -12,7 +12,7 @@ const api = (path, params) => {
 
 const state = {
   country: new URLSearchParams(location.search).get('country') || 'india',
-  tech: 1, q: '', site: '', remote: '', sort: 'date_posted',
+  tech: 1, q: '', site: '', remote: '', role: '', sort: 'date_posted',
   offset: 0, limit: 25, total: 0, currency: 'INR',
 };
 let lastSeries = null;
@@ -63,15 +63,13 @@ function renderHeadline(d) {
 function renderChart(d) {
   const s = d.series || { dates: [], values: [] };
   const history = s.dates.map((date, i) => ({ date, value: s.values[i] }));
-  const drawn = drawChart($('chart'), {
+  drawChart($('chart'), {
     history,
     forecast: d.forecast ? d.forecast.points : [],
-    observedFrom: s.observed_from,
   });
   // Legend entries only for marks that are actually on the chart.
   $('lg-forecast').hidden = !d.forecast;
   $('lg-band').hidden = !d.forecast;
-  $('lg-recon').hidden = !(drawn && drawn.hasReconstructed);
 
   $('chart-sub').textContent = history.length
     ? `${fmtDate(history[0].date)} – ${fmtDate(history[history.length - 1].date)} · `
@@ -86,10 +84,7 @@ function renderChart(d) {
       + `This is an extrapolation of the current trend, not a prediction — see the method note below.`
     : `No forecast yet: the model needs at least ${d.config.forecast_min_points} days of collected `
       + `data (linear regression), and ${d.config.arima_min_points} days before it switches to ARIMA. `
-      + (s.observed_from
-          ? `Until then the chart shows collected history only.`
-          : `Nothing has been collected yet, so the whole curve is reconstructed from posting dates `
-            + `— shaded above, and understated the further back it goes.`);
+      + `The chart begins at the first completed scrape.`;
 }
 
 /* ── jobs table ────────────────────────────────────────────────────────── */
@@ -142,7 +137,7 @@ async function loadSeries() {
     renderChart(d);
     $('site').innerHTML = '<option value="">All sources</option>'
       + (d.summary.by_site || []).map((s) => `<option value="${esc(s.site)}">${esc(s.site)} (${nf.format(s.n)})</option>`).join('');
-    $('site').value = state.site;
+    $('site').value = state.site || '';
 
     // Roles come from what has actually been labelled, so the dropdown never
     // offers a category with nothing behind it.
@@ -150,7 +145,7 @@ async function loadSeries() {
     const pretty = (r) => r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     $('role').innerHTML = '<option value="">All roles</option>'
       + roles.map((r) => `<option value="${esc(r.role)}">${esc(pretty(r.role))} (${nf.format(r.n)})</option>`).join('');
-    $('role').value = state.role;
+    $('role').value = state.role || '';
     $('role').hidden = roles.length === 0;
   } catch (err) {
     $('chart').innerHTML = `<div class="empty">Could not load the series — ${esc(err.message)}</div>`;

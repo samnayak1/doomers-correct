@@ -32,10 +32,9 @@ class SeriesService:
         curve downward regardless of the market. The `start` clamp stops one
         stale posting date stretching the chart across years nobody observed.
 
-        Days before the first completed scrape are survivorship-biased — only
-        listings still live when we first looked can be reconstructed — so
-        `observed_from` marks where real observation begins, and the model is
-        never fitted before it.
+        The result starts at the first completed scrape. Earlier days can only
+        hold listings that survived until we first looked, which is a decay
+        curve rather than a market, so they are dropped rather than drawn.
         """
         reconstruct_days = config.RECONSTRUCT_DAYS if reconstruct_days is None else reconstruct_days
         today_d = date.fromisoformat(today) if today else date.today()
@@ -71,8 +70,7 @@ class SeriesService:
             hi_ord = b if hi_ord is None else max(hi_ord, b)
 
         if lo_ord is None:
-            return {"dates": [], "values": [], "observed_from": None,
-                    "reconstructed_until": None, "observed_days": 0}
+            return {"dates": [], "values": [], "observed_from": None, "observed_days": 0}
 
         dates, values, running = [], [], 0
         for o in range(lo_ord, hi_ord + 1):
@@ -82,11 +80,27 @@ class SeriesService:
 
         observed = self.snapshots.observed_dates(country)
         observed_from = observed[0] if observed else None
+
+        # Clip to days we actually observed. Anything earlier can only contain
+        # listings that were still live when we first looked, so it is a
+        # survivorship curve: 20 July read 77 when the real figure was plausibly
+        # thousands, and the decay of listing lifespans read backwards slopes
+        # upward and looks exactly like hiring growth. It also never repairs
+        # itself, because later scrapes only bring recent posting dates.
+        #
+        # RECONSTRUCT_DAYS still matters despite this: it bounds how far back a
+        # stale posting date can push `start`, which keeps the difference array
+        # from spanning decades before being clipped away here.
+        if not observed_from:
+            return {"dates": [], "values": [], "observed_from": None, "observed_days": 0}
+        cut = next((k for k, day in enumerate(dates) if day >= observed_from), None)
+        if cut is None:
+            return {"dates": [], "values": [], "observed_from": observed_from,
+                    "observed_days": len(observed)}
         return {
-            "dates": dates,
-            "values": values,
+            "dates": dates[cut:],
+            "values": values[cut:],
             "observed_from": observed_from,
-            "reconstructed_until": observed_from,
             "observed_days": len(observed),
         }
 
@@ -172,9 +186,8 @@ class ForecastService:
     def refresh(self, country: str, *, until: str | None = None, log=print) -> dict | None:
         """Re-fit on the observed history and cache the result.
 
-        Only days we actually scraped are used. The reconstructed pre-launch
-        tail is survivorship-biased, so fitting on it would manufacture growth
-        that never happened.
+        The series already begins at the first completed scrape, so there is no
+        pre-launch tail left to exclude here.
         """
         series = self.series.daily_series(country)
         dates, values = self.series.fit_window(series, max_days=config.FORECAST_FIT_DAYS)
