@@ -33,10 +33,25 @@ def _add_job_role(migrator, db) -> None:
     db.execute_sql("CREATE INDEX IF NOT EXISTS jobs_role ON jobs (role)")
 
 
+def _drop_duplicate_indexes(migrator, db) -> None:
+    """Remove the index set Peewee created from `index=True` on model fields.
+
+    Each duplicated an ix_jobs_* index already declared in SCHEMA. The pair on
+    `role` also went inconsistent - integrity_check reported rows missing from
+    job_role - because the model index was created in the same connect() that
+    later added the column. Dropping and reindexing repairs it; the models no
+    longer declare indexes, so they will not come back.
+    """
+    for name in ("job_role", "job_date_posted", "job_is_tech", "job_last_seen"):
+        db.execute_sql(f'DROP INDEX IF EXISTS "{name}"')
+    db.execute_sql("REINDEX")
+
+
 # Ordered, append-only. Each is (description, callable taking a migrator+db).
 # Never edit or reorder an entry that has shipped - add a new one.
 MIGRATIONS: list[tuple[str, object]] = [
     ("add jobs.role", _add_job_role),
+    ("drop duplicate model-declared indexes", _drop_duplicate_indexes),
 ]
 
 

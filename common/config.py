@@ -115,7 +115,7 @@ RECONSTRUCT_DAYS = _int("RECONSTRUCT_DAYS", 90)
 # Only rows with no role yet are ever sent, so nightly cost stays flat as the
 # table grows rather than scaling with it.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 CLASSIFY_BATCH = _int("CLASSIFY_BATCH", 50)          # titles per request
 CLASSIFY_MAX_PER_RUN = _int("CLASSIFY_MAX_PER_RUN", 1500)  # bounds a backfill
 CLASSIFY_TIMEOUT = _int("CLASSIFY_TIMEOUT", 60)

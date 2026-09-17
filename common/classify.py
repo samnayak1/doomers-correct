@@ -39,15 +39,18 @@ def enabled() -> bool:
 
 
 def _schema(n: int) -> dict:
-    """An array of exactly n labels, each constrained to the category enum.
+    """An array of {n, role} labels, each role constrained to the category enum.
 
-    The enum is enforced by the API, so the model cannot return a category that
-    is not in config.ROLE_CATEGORIES - no post-hoc validation needed for that.
+    The enum is enforced by the API, so a category outside config.ROLE_CATEGORIES
+    cannot come back at all.
+
+    No minItems/maxItems: the API rejects the whole request with a bare
+    "Request contains an invalid argument" once those exceed a small value -
+    a batch of 5 is accepted, 40 is not. They were never load-bearing anyway,
+    since every item carries its own index and classify_batch validates it.
     """
     return {
         "type": "ARRAY",
-        "minItems": n,
-        "maxItems": n,
         "items": {
             "type": "OBJECT",
             "properties": {
@@ -55,6 +58,7 @@ def _schema(n: int) -> dict:
                 "role": {"type": "STRING", "enum": list(config.ROLE_CATEGORIES)},
             },
             "required": ["n", "role"],
+            "propertyOrdering": ["n", "role"],
         },
     }
 

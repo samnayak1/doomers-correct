@@ -25,6 +25,12 @@ class BaseModel(Model):
         database = database
 
 
+# NOTE: no `index=True` on any field. Indexes are declared once, in db.SCHEMA
+# and in MIGRATIONS, under the ix_jobs_* names. Declaring them here too made
+# Peewee create a second, differently-named index over the same column
+# (job_role alongside jobs_role), which is pure write amplification at best -
+# and the pair on `role` ended up inconsistent, with integrity_check reporting
+# "row N missing from index job_role".
 class Job(BaseModel):
     country = TextField()
     id = TextField()
@@ -34,17 +40,17 @@ class Job(BaseModel):
     location = TextField(null=True)
     is_remote = BooleanField(null=True)
     job_type = TextField(null=True)
-    date_posted = TextField(null=True, index=True)
+    date_posted = TextField(null=True)
     job_url = TextField(null=True)
     min_amount = FloatField(null=True)
     max_amount = FloatField(null=True)
     currency = TextField(null=True)
     pay_interval = TextField(null=True)
-    is_tech = IntegerField(default=0, index=True)
-    role = TextField(null=True, index=True)   # set once by common/classify.py
+    is_tech = IntegerField(default=0)
+    role = TextField(null=True)   # set once by common/classify.py
     description = TextField(null=True)
     first_seen = TextField()
-    last_seen = TextField(index=True)
+    last_seen = TextField()
     seen_count = IntegerField(default=1)
 
     class Meta:
