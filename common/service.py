@@ -19,22 +19,11 @@ class SeriesService:
 
     def daily_series(self, country: str, *, tech_only: bool = True,
                      reconstruct_days: int | None = None, today: str | None = None) -> dict:
-        """Reconstruct active-listing counts per day.
-
-        Each listing contributes an interval:
-
+        """
             start = min(date_posted, first_seen)          # when the listing went live
             start = max(start, first_seen - reconstruct)  # bound the pre-launch tail
             end   = min(last_seen, today)                 # when we last saw it
 
-        Counting overlaps per day gives the curve. There is deliberately no
-        grace period past the last sighting: it would bias the recent end of the
-        curve downward regardless of the market. The `start` clamp stops one
-        stale posting date stretching the chart across years nobody observed.
-
-        The result starts at the first completed scrape. Earlier days can only
-        hold listings that survived until we first looked, which is a decay
-        curve rather than a market, so they are dropped rather than drawn.
         """
         reconstruct_days = config.RECONSTRUCT_DAYS if reconstruct_days is None else reconstruct_days
         today_d = date.fromisoformat(today) if today else date.today()
@@ -81,16 +70,7 @@ class SeriesService:
         observed = self.snapshots.observed_dates(country)
         observed_from = observed[0] if observed else None
 
-        # Clip to days we actually observed. Anything earlier can only contain
-        # listings that were still live when we first looked, so it is a
-        # survivorship curve: 20 July read 77 when the real figure was plausibly
-        # thousands, and the decay of listing lifespans read backwards slopes
-        # upward and looks exactly like hiring growth. It also never repairs
-        # itself, because later scrapes only bring recent posting dates.
-        #
-        # RECONSTRUCT_DAYS still matters despite this: it bounds how far back a
-        # stale posting date can push `start`, which keeps the difference array
-        # from spanning decades before being clipped away here.
+
         if not observed_from:
             return {"dates": [], "values": [], "observed_from": None, "observed_days": 0}
         cut = next((k for k, day in enumerate(dates) if day >= observed_from), None)
@@ -107,18 +87,7 @@ class SeriesService:
     @staticmethod
     def fit_window(series: dict, max_days: int | None = -1) -> tuple[list[str], list[float]]:
         """The slice a model may see: from the first completed scrape onward.
-
-        Every calendar day in that range is kept, not only the days a scrape ran.
-        Days between two scrapes are interpolated by the interval arithmetic, not
-        invented, and ARIMA wants a regular grid — dropping them would hand the
-        model unevenly spaced points it would then treat as consecutive.
-
-        What this slice excludes is the pre-launch stretch, which is
-        survivorship-biased. How many scrapes actually happened is a separate
-        question, and the caller gates on it: see ForecastService.refresh.
-
-        Pure function of the series — no data access, so it is trivially testable.
-        """
+   """
         obs_from = series.get("observed_from")
         if not obs_from:
             return [], []
@@ -192,11 +161,7 @@ class ForecastService:
         series = self.series.daily_series(country)
         dates, values = self.series.fit_window(series, max_days=config.FORECAST_FIT_DAYS)
 
-        # Gate on scrapes that actually ran, not on calendar days in the range.
-        # Those differ whenever a night is missed, and counting days let a
-        # forecast fire off 5 scrapes spread over 13 days — a line fitted partly
-        # to interpolation, which produced a slope of -181/day and a projection
-        # clipped to zero for the following 470 days.
+
         scrapes = series.get("observed_days", 0)
         if scrapes < config.FORECAST_MIN_POINTS:
             log(f"[forecast] {country}: {scrapes} completed scrape(s) over "
