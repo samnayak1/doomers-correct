@@ -51,7 +51,9 @@ a:hover { text-decoration: underline; }
   gap: 16px; flex-wrap: wrap;
   padding-bottom: 12px; border-bottom: 1px solid var(--border);
 }
-.wordmark { font-size: 30px; font-weight: 300; letter-spacing: -0.02em; color: var(--ink); }
+.brand { display: flex; flex-direction: column; gap: 2px; }
+.wordmark { margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em; color: var(--ink); }
+.subtitle { margin: 0; font-size: 16px; font-weight: 400; color: var(--ink-soft); }
 .controls { display: flex; gap: 8px; }
 select, input[type="search"] {
   font: inherit; font-size: 14px; color: var(--ink);
@@ -142,13 +144,16 @@ td.co { max-width: 190px; }
 details.method { margin-top: 22px; font-size: 13px; }
 details.method summary { cursor: pointer; font-weight: 600; color: var(--ink-soft); }
 details.method p { color: var(--ink-mute); max-width: 82ch; line-height: 1.55; }
-footer { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border);
-  font-size: 12.5px; color: var(--ink-mute); }
+footer { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border);
+  font-size: 15px; line-height: 1.7; color: var(--ink-soft); }
+footer a { font-weight: 600; }
 
 /* ── Phone: cards instead of a seven-column table ─────────────────────────── */
 @media (max-width: 700px) {
   .page { padding: 16px 14px 44px; }
   .wordmark { font-size: 24px; }
+  .subtitle { font-size: 14.5px; }
+  footer { font-size: 14px; }
   .headline { font-size: 17px; }
   .headline b { font-size: 25px; }
   .filters { grid-template-columns: 1fr; }
