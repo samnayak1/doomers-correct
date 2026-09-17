@@ -96,6 +96,48 @@ def test_model_switches_at_the_configured_threshold():
     check("over the threshold -> ARIMA", long["model"].startswith("arima"), long["model"])
 
 
+def test_forecast_gate_counts_scrapes_not_calendar_days():
+    """Five scrapes spread over thirteen days is five scrapes.
+
+    The fit window spans every calendar day from the first scrape, which is
+    right — gaps are interpolated, and ARIMA wants a regular grid. But the
+    minimum-history gate must count scrapes that actually ran. Counting days
+    instead let a forecast fire on five scrapes, fitting a line partly to
+    interpolation: slope -181/day, clipped to zero for the next 470 days.
+    """
+    dbp = TMP / "gate.db"
+    dbp.unlink(missing_ok=True)
+    conn = db.connect(dbp)
+    svc = service.build(conn)
+
+    # Scrapes on 5 days, but listings posted across the whole 13-day span, so
+    # the series has a value for every calendar day in between.
+    scrape_days = ["2026-03-01", "2026-03-04", "2026-03-07", "2026-03-10", "2026-03-13"]
+    for n, day in enumerate(scrape_days):
+        svc.job_repo.upsert("india", [
+            dict(id=f"j{n}-{k}", site="indeed", title="Software Engineer", company="Example",
+                 location="India", is_remote=0, job_type="fulltime", date_posted=day,
+                 job_url=f"https://example.com/{n}/{k}", min_amount=None, max_amount=None,
+                 currency="INR", pay_interval=None, is_tech=1, description=None)
+            for k in range(20)], day)
+        svc.snapshot_repo.record("india", day, ran_at="t", ok=1)
+
+    series = svc.series.daily_series("india", today="2026-03-13")
+    window, _ = service.SeriesService.fit_window(series, max_days=None)
+    check("fit window spans calendar days", len(window) == 13, f"{len(window)} days")
+    check("observed_days counts scrapes", series["observed_days"] == 5,
+          str(series["observed_days"]))
+    check("no forecast at 5 scrapes even though 13 days are in range",
+          svc.forecasts.refresh("india", log=lambda *_: None) is None)
+
+    # Two more scrapes reaches the 7 the gate asks for.
+    for day in ("2026-03-14", "2026-03-15"):
+        svc.snapshot_repo.record("india", day, ran_at="t", ok=1)
+    check("forecast appears once 7 scrapes exist",
+          svc.forecasts.refresh("india", log=lambda *_: None) is not None)
+    conn.close()
+
+
 def test_no_forecast_without_enough_history():
     check("too little data -> no forecast",
           forecast_series(_dates(3), [1.0, 2.0, 3.0], "2027-12-31", min_points=7) is None)

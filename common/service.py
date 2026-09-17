@@ -92,7 +92,16 @@ class SeriesService:
 
     @staticmethod
     def fit_window(series: dict, max_days: int | None = -1) -> tuple[list[str], list[float]]:
-        """The slice a model may see: observed days only, optionally the last N.
+        """The slice a model may see: from the first completed scrape onward.
+
+        Every calendar day in that range is kept, not only the days a scrape ran.
+        Days between two scrapes are interpolated by the interval arithmetic, not
+        invented, and ARIMA wants a regular grid — dropping them would hand the
+        model unevenly spaced points it would then treat as consecutive.
+
+        What this slice excludes is the pre-launch stretch, which is
+        survivorship-biased. How many scrapes actually happened is a separate
+        question, and the caller gates on it: see ForecastService.refresh.
 
         Pure function of the series — no data access, so it is trivially testable.
         """
@@ -168,9 +177,18 @@ class ForecastService:
         """
         series = self.series.daily_series(country)
         dates, values = self.series.fit_window(series, max_days=config.FORECAST_FIT_DAYS)
-        if len(dates) < config.FORECAST_MIN_POINTS:
-            log(f"[forecast] {country}: {len(dates)} observed day(s), need "
-                f"{config.FORECAST_MIN_POINTS} - skipping")
+
+        # Gate on scrapes that actually ran, not on calendar days in the range.
+        # Those differ whenever a night is missed, and counting days let a
+        # forecast fire off 5 scrapes spread over 13 days — a line fitted partly
+        # to interpolation, which produced a slope of -181/day and a projection
+        # clipped to zero for the following 470 days.
+        scrapes = series.get("observed_days", 0)
+        if scrapes < config.FORECAST_MIN_POINTS:
+            log(f"[forecast] {country}: {scrapes} completed scrape(s) over "
+                f"{len(dates)} day(s), need {config.FORECAST_MIN_POINTS} - skipping")
+            return None
+        if not dates:
             return None
 
         from .forecast import forecast_series  # lazy: pulls in numpy
@@ -182,6 +200,8 @@ class ForecastService:
             damping=config.FORECAST_DAMPING,
         )
         if payload:
+            # Say how many scrapes back the fit, not just how many points it saw.
+            payload["fitted_on"]["scrapes"] = scrapes
             self.forecasts.save(country, "tech_active", payload,
                                 datetime.now(timezone.utc).isoformat())
             log(f"[forecast] {country}: {payload['model']} over {payload['horizon_days']}d "
