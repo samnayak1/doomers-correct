@@ -65,9 +65,6 @@ $C down                                                  # stop, keep data
 $C down -v                                               # stop AND delete data
 ```
 
-Tests run offline (boards stubbed): `pip install -r worker/requirements.txt`
-then `python tests/test_core.py`.
-
 Restore is automatic on a fresh instance. By hand: stop `worker` and `api`, then
 `$C run --rm db-replicate litestream restore -o /data/jobs.db /data/jobs.db`,
 optionally with `-timestamp 2026-09-05T00:00:00Z`.
@@ -114,6 +111,6 @@ common/     config, SQLite, JobSpy wrapper, forecasting, pipeline
 worker/     nightly scheduler + image        api/     read-only JSON API + image
 web/        static page; nginx + Caddy       caddy/   production TLS config
 litestream/ replication config               lambda/  optional Lambda scheduler
-scripts/    seed data, swap setup, deploy    tests/   offline suite
+scripts/    seed data, swap setup, deploy
 docker-compose{,.dev,.prod}.yml              run.sh   serial build + deploy
 ```

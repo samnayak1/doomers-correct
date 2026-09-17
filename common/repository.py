@@ -1,9 +1,8 @@
 """Data access, expressed as Peewee queries.
 
 Repositories know tables and columns; they know nothing about what an "active
-listing" is or what the API returns. That rule is what lets the service layer be
-tested against a stub instead of a database - see
-tests/test_core.py::test_series_service_runs_without_a_database.
+listing" is or what the API returns. That separation is what lets the service
+layer be driven from a stub object rather than a real database.
 
 Every value reaches SQLite as a bound parameter, so user input is never able to
 reach the SQL text. `sort` is resolved through a fixed map rather than
