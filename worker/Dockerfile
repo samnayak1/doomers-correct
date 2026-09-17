@@ -10,6 +10,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends tzdata procps \
  && rm -rf /var/lib/apt/lists/*
 
+# Run as an unprivileged user. The uid is fixed and shared with api and
+# db-replicate because all three open the same /data volume; db-restore chowns
+# it to this uid before any of them are allowed to start.
+RUN useradd --system --uid 10001 --gid 0 --no-create-home --shell /usr/sbin/nologin app
+
 WORKDIR /app
 COPY worker/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
@@ -33,4 +38,5 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=60s --timeout=5s --start-period=20s --retries=3 \
   CMD pgrep -f scheduler.py > /dev/null || exit 1
 
+USER 10001:0
 CMD ["python", "-u", "/app/scheduler.py"]

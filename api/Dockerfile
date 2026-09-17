@@ -5,6 +5,9 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Same uid as worker and db-replicate: they share the /data volume.
+RUN adduser -S -u 10001 -G root -H -s /sbin/nologin app
+
 WORKDIR /app
 COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
@@ -22,5 +25,6 @@ HEALTHCHECK --interval=30s --timeout=4s --start-period=10s --retries=3 \
 
 # One worker: this is a read-only API on a 1 GB box, and a second process would
 # double the resident footprint for no throughput we need.
+USER 10001:0
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", \
      "--workers", "1", "--no-access-log", "--timeout-keep-alive", "20"]

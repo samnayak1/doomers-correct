@@ -54,6 +54,7 @@ a:hover { text-decoration: underline; }
 .brand { display: flex; flex-direction: column; gap: 2px; }
 .wordmark { margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em; color: var(--ink); }
 .subtitle { margin: 0; font-size: 16px; font-weight: 400; color: var(--ink-soft); }
+.credit { margin: 4px 0 0; font-size: 13px; color: var(--ink-mute); }
 .controls { display: flex; gap: 8px; }
 select, input[type="search"] {
   font: inherit; font-size: 14px; color: var(--ink);
@@ -153,6 +154,7 @@ footer a { font-weight: 600; }
   .page { padding: 16px 14px 44px; }
   .wordmark { font-size: 24px; }
   .subtitle { font-size: 14.5px; }
+  .credit { font-size: 12.5px; }
   footer { font-size: 14px; }
   .headline { font-size: 17px; }
   .headline b { font-size: 25px; }

@@ -18,6 +18,10 @@ services:
       dockerfile: web/Dockerfile.caddy
     image: adc-caddy:latest
     restart: unless-stopped
+    user: "10001:0"
+    # The only privilege anything here keeps. Caddy must bind 80 and 443;
+    # everything else about it runs unprivileged.
+    cap_add: ["NET_BIND_SERVICE"]
     env_file: [.env]
     depends_on:
       api:

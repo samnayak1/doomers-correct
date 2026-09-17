@@ -28,8 +28,18 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        # Ordering matters here. api and worker wait on this container exiting
-        # 0, so anything that exits non-zero holds the whole site down.
+        # Hand the volume over FIRST, before any branch can exit. A named
+        # volume is created root-owned and an existing one keeps whatever
+        # ownership it had, so every other container - all unprivileged - needs
+        # this done regardless of whether there is anything to restore. Putting
+        # it after the "database already present" branch meant it never ran in
+        # exactly the case that needed it: writes then failed with "attempt to
+        # write a readonly database" while reads carried on working.
+        chown -R 10001:0 /data && chmod -R g+rwX /data
+        echo "/data handed to 10001:0"
+
+        # Ordering matters here too. api and worker wait on this container
+        # exiting 0, so anything that exits non-zero holds the whole site down.
         if [ -f /data/jobs.db ]; then
           echo "local database present - skipping restore"
           exit 0
@@ -61,6 +71,7 @@ services:
     # database. Litestream buffers WAL segments and snapshots while uploading,
     # so its peak tracks database size - which is projected at ~200 MB after a
     # year. An OOM here kills replication quietly, so give it real headroom.
+    user: "10001:0"
     mem_limit: 96m
     mem_reservation: 24m
     cpus: 0.25
@@ -99,6 +110,7 @@ services:
     # Measured at 44 MiB serving live traffic; 112 leaves 2.5x. The 48 MiB
     # freed here is what pays for db-replicate's raise, so the totals are
     # unchanged: 752 MiB dev, 784 MiB prod.
+    user: "10001:0"
     mem_limit: 112m
     mem_reservation: 48m
     cpus: 0.75
@@ -126,6 +138,7 @@ services:
       - data:/data
     # The ceiling a scrape may reach. It idles far below this: the scheduler
     # spawns the pipeline as a child process and reclaims everything on exit.
+    user: "10001:0"
     mem_limit: 512m
     mem_reservation: 48m
     cpus: 1.0

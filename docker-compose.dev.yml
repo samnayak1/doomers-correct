@@ -18,7 +18,7 @@ services:
       api:
         condition: service_started
     ports:
-      - "${HTTP_PORT:-8080}:80"
+      - "${HTTP_PORT:-8080}:8080"
     # nginx forks a worker per CPU; measured at 12 MiB idle on a 2-vCPU box.
     mem_limit: 32m
     mem_reservation: 12m
