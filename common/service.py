@@ -1,13 +1,4 @@
-"""Business logic.
 
-Services hold the rules — what "active" means, which days a model may see, how
-a summary is assembled. They reach data only through repository methods, never
-through a cursor, so a test can hand them a stub object and skip SQLite
-entirely.
-
-`build(conn)` wires the three services against one connection; routes and the
-pipeline use that rather than constructing repositories by hand.
-"""
 
 from __future__ import annotations
 
@@ -124,9 +115,6 @@ class SeriesService:
         snap = self.snapshots.latest(country)
         prev = self.snapshots.latest(country, offset=1)
 
-        # Before the first run finishes there is no snapshot, but there may
-        # already be listings on disk. Reporting 0 next to a chart showing a
-        # thousand of them is worse than reporting the live count and saying so.
         live = None
         if not snap:
             series = self.daily_series(country)

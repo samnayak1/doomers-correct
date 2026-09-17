@@ -1,12 +1,5 @@
-/* Time-series chart: observed line, damped forecast, uncertainty band.
-   Built on Chart.js 4 (vendored in /vendor, not a CDN — the page stays
-   self-contained and makes no third-party request).
 
-   Two things differ from the hand-rolled SVG this replaces:
-   canvas cannot resolve `var(--token)`, so theme colours are read from
-   getComputedStyle at draw time; and the chart instance must be destroyed
-   before redrawing or Chart.js leaks canvases on every country switch. */
-
+//CODED BY AI. 
 const DAY = 86400000;
 const toDay = (iso) => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY);
 const fromDay = (d) => new Date(d * DAY);
