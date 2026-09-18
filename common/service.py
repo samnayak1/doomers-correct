@@ -23,7 +23,7 @@ class SeriesService:
             start = min(date_posted, first_seen)          # when the listing went live
             When the listing went live. Normally the board's posting date, since that precedes our seeing it. If the board gives no date (very common — three of the four rows above), it falls back to the day we first saw it.
             start = max(start, first_seen - reconstruct)  # bound the pre-launch tail
-            that job claims it was posted 22 June 1988. Without the clamp it would count as an open role on every day for 38 years and stretch the x-axis to match. Clamped, it starts at 2026-06-19.
+            if a job claims it was posted 22 June 1988. Without the clamp it would count as an open role on every day for 38 years and stretch the x-axis to match. Clamped, it starts at 2026-06-19.
             end   = min(last_seen, today)                 # when we last saw it
 
         """
