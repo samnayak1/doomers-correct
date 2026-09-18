@@ -110,7 +110,7 @@ continues and knows nothing about hiring cycles, funding or layoffs.
 common/     config, SQLite, JobSpy wrapper, forecasting, pipeline
 worker/     nightly scheduler + image        api/     read-only JSON API + image
 web/        static page; nginx + Caddy       caddy/   production TLS config
-litestream/ replication config               lambda/  optional Lambda scheduler
-scripts/    seed data, swap setup, deploy
+litestream/ replication config
+scripts/    seed data, swap setup
 docker-compose{,.dev,.prod}.yml              run.sh   serial build + deploy
 ```

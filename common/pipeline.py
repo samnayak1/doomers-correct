@@ -92,7 +92,8 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
                 + (" - more pending, will continue next run" if remaining else " - all caught up"))
 
     svc.forecasts.refresh(country, log=log)
-    # Only the Lambda path backs the file up here; on EC2, Litestream has it.
+    # Off by default: Litestream already has the file. Only the standalone
+    # path, without the db-replicate sidecar, turns this on.
     raw_key = None
     if config.DB_BACKUP_TO_S3:
         try:
