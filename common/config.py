@@ -130,7 +130,7 @@ ROLE_CATEGORIES = [
     "devops", "sre", "system_engineer", "security", "it_support",
     "data_engineer", "data_scientist", "aiml",
     "embedded_engineer", "firmware_engineer", "electronics_engineer",
-    "game_developer", "qa", "forward_deployed_engineer",
+    "game_developer", "qa", "forward_deployed_engineer", "architect",
     "product_management", "sales_engineer", "other",
 ]
 
