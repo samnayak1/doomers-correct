@@ -18,7 +18,8 @@ class SeriesService:
         self.snapshots = snapshots
 
     def daily_series(self, country: str, *, tech_only: bool = True,
-                     reconstruct_days: int | None = None, today: str | None = None) -> dict:
+                     reconstruct_days: int | None = None, today: str | None = None,
+                     also_observed: str | None = None) -> dict:
         """
             start = min(date_posted, first_seen)          # when the listing went live
             When the listing went live. Normally the board's posting date, since that precedes our seeing it. If the board gives no date (very common — three of the four rows above), it falls back to the day we first saw it.
@@ -70,6 +71,19 @@ class SeriesService:
             values.append(running)
 
         observed = self.snapshots.observed_dates(country)
+        # The pipeline calls this BEFORE it records the snapshot for the run in
+        # progress - it needs the series to know what to put in that row. So on
+        # the very first scrape the table is still empty and clipping to
+        # `observed[0]` would throw the whole series away and store 0 active
+        # listings. `also_observed` lets the caller name the day it is currently
+        # scraping, which is observed by definition: the scrape just happened.
+        if also_observed:
+            observed = sorted(set(observed) | {also_observed})
+        # Scrapes taken under an older configuration are not comparable, so they
+        # are excluded from both ends: they do not set the start of the chart,
+        # and they do not count toward the scrapes the forecast gate waits for.
+        if config.SERIES_FROM:
+            observed = [d for d in observed if d >= config.SERIES_FROM]
         observed_from = observed[0] if observed else None
 
 
@@ -94,9 +108,11 @@ class SeriesService:
         if not obs_from:
             return [], []
         dates, values = series["dates"], series["values"]
-        try:
-            i = dates.index(obs_from)
-        except ValueError:
+        # Not dates.index(): observed_from is a scrape date, and if no interval
+        # happens to cover that exact day the series starts just after it. An
+        # exact lookup would raise there and silently drop the forecast.
+        i = next((k for k, d in enumerate(dates) if d >= obs_from), None)
+        if i is None:
             return [], []
         if max_days == -1:
             max_days = config.FORECAST_FIT_DAYS

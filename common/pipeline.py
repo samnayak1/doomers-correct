@@ -54,9 +54,8 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
         conn.close()
         return {"country": country, "ok": False, "note": note}
 
-    series = svc.series.daily_series(country, today=scrape_date)
+    series = svc.series.daily_series(country, today=scrape_date, also_observed=scrape_date)
     active_total = series["values"][-1] if series["values"] else 0
-    all_series = svc.series.daily_series(country, tech_only=False, today=scrape_date)
     remote_active = svc.job_repo.count_remote(country, seen_on_or_after=scrape_date)
     tech_seen = svc.job_repo.count_seen_on(country, scrape_date)
 
@@ -65,7 +64,8 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
         ran_at=datetime.now(timezone.utc).isoformat(),
         duration_sec=round(time.time() - started, 1),
         rows_seen=total_rows, new_jobs=new_total, tech_jobs=tech_seen,
-        active_total=all_series["values"][-1] if all_series["values"] else 0,
+        # active_total is left unset: the all-roles view is gone, and computing
+        # it meant a second full pass over every interval in the table.
         tech_active=active_total, remote_active=remote_active,
         by_site=by_site, ok=1 if ok else 0, note=note or None,
     )
@@ -120,7 +120,7 @@ def run_all() -> list[dict]:
 if __name__ == "__main__":
     import argparse, json as _json
     ap = argparse.ArgumentParser(description="Scrape job boards and update the dataset.")
-    ap.add_argument("--country", default="all", help="india | usa | all")
+    ap.add_argument("--country", default="all", help="india | all")
     ap.add_argument("--forecast-only", action="store_true", help="re-fit models without scraping")
     a = ap.parse_args()
 

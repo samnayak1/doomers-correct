@@ -72,16 +72,16 @@ def countries():
 
 
 @app.get("/api/series")
-def series(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1):
+def series(country: str = Query(config.DEFAULT_COUNTRY)):
     country = config.country_key(country)
     with services() as svc:
         payload = {
             "country": country,
             "label": config.COUNTRIES[country]["label"],
             "prose": config.COUNTRIES[country]["prose"],
-            "metric": "tech_active" if tech else "all_active",
-            "series": svc.series.daily_series(country, tech_only=bool(tech)),
-            "forecast": svc.forecasts.get(country) if tech else None,
+            "metric": "tech_active",
+            "series": svc.series.daily_series(country),
+            "forecast": svc.forecasts.get(country),
             "summary": svc.series.summary(country),
             "config": {
                 "forecast_until": config.FORECAST_UNTIL,
@@ -94,12 +94,12 @@ def series(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1):
 
 
 @app.get("/api/jobs")
-def jobs(country: str = Query(config.DEFAULT_COUNTRY), tech: int = 1, q: str = "",
+def jobs(country: str = Query(config.DEFAULT_COUNTRY), q: str = "",
          site: str = "", remote: str = "", role: str = "", sort: str = "date_posted",
          limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
     country = config.country_key(country)
     with services() as svc:
-        out = svc.jobs.list(country, tech_only=bool(tech), q=q.strip()[:80],
+        out = svc.jobs.list(country, q=q.strip()[:80],
                             site=site.strip()[:24], remote=remote,
                             role=role.strip()[:40], sort=sort,
                             limit=limit, offset=offset)

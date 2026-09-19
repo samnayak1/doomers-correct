@@ -40,7 +40,7 @@ degrade to no-ops and everything else still works.
 |---|---|---|
 | `SCRAPE_AT` / `TZ` | `00:00` / `Asia/Kolkata` | When the nightly run fires |
 | `RUN_ON_START` | `true` | Scrape immediately on boot |
-| `RESULTS_WANTED` | `60` | Per (site, term, location); main driver of runtime |
+| `RESULTS_WANTED` | `300` | Per (site, term, location); main driver of runtime |
 | `PROXIES` | — | Needed for Naukri; most boards block unproxied IPs |
 | `SITES_INDIA` etc. | `indeed,linkedin` | Per-country board list; naukri needs proxies |
 | `LITESTREAM_SYNC_INTERVAL` | `5m` | Worst-case data loss window |
@@ -114,3 +114,26 @@ litestream/ replication config
 scripts/    seed data, swap setup
 docker-compose{,.dev,.prod}.yml              run.sh   serial build + deploy
 ```
+
+
+
+Host setup
+
+sudo dnf update -y
+sudo dnf install -y docker git
+sudo systemctl enable --now docker
+sudo usermod -aG docker ec2-user
+
+
+git clone https://github.com/samnayak1/doomers-correct.git job-doomers
+cd job-doomers
+sudo ./scripts/setup-swap.sh
+
+
+BUILDX_VER=$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest \
+  | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+
+sudo curl -SL \
+  "https://github.com/docker/buildx/releases/download/${BUILDX_VER}/buildx-${BUILDX_VER}.linux-amd64" \
+  -o /usr/libexec/docker/cli-plugins/docker-buildx
+sudo chmod +x /usr/libexec/docker/cli-plugins/docker-buildx

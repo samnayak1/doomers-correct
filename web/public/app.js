@@ -12,7 +12,7 @@ const api = (path, params) => {
 
 const state = {
   country: new URLSearchParams(location.search).get('country') || 'india',
-  tech: 1, q: '', site: '', remote: '', role: '', sort: 'date_posted',
+  q: '', site: '', remote: '', role: '', sort: 'date_posted',
   offset: 0, limit: 25, total: 0, currency: 'INR',
 };
 let lastSeries = null;
@@ -45,7 +45,7 @@ function renderHeadline(d) {
   const end = fc && fc.points.length ? fc.points[fc.points.length - 1] : null;
   const delta = s.delta_pct;
   const parts = [
-    `<b>${nf.format(s.tech_active || 0)}</b> active ${state.tech ? 'tech ' : ''}listings`,
+    `<b>${nf.format(s.tech_active || 0)}</b> active tech listings`,
     `<b>${nf.format(s.new_jobs || 0)}</b> new in the last run`,
   ];
   if (delta != null) {
@@ -125,9 +125,8 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
 async function loadSeries() {
   $('chart').innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const d = await api('/api/series', { country: state.country, tech: state.tech });
+    const d = await api('/api/series', { country: state.country });
     lastSeries = d;
-    $('chart-title').textContent = state.tech ? 'Active tech listings' : 'All active listings';
     $('freshness').textContent = d.summary.latest_scrape
       ? `Last scrape ${fmtDate(d.summary.latest_scrape)} · ${plural(d.summary.tracked_total, 'listing')} tracked`
       : d.summary.tracked_total
@@ -156,7 +155,7 @@ async function loadSeries() {
 async function loadJobs() {
   try {
     renderJobs(await api('/api/jobs', {
-      country: state.country, tech: state.tech, q: state.q, site: state.site,
+      country: state.country, q: state.q, site: state.site,
       remote: state.remote, role: state.role, sort: state.sort,
       limit: state.limit, offset: state.offset,
     }));
@@ -176,7 +175,6 @@ function reloadAll() {
 }
 
 $('country').addEventListener('change', (e) => { state.country = e.target.value; state.site = ''; state.role = ''; reloadAll(); });
-$('scope').addEventListener('change', (e) => { state.tech = +e.target.value; reloadAll(); });
 $('site').addEventListener('change', (e) => { state.site = e.target.value; state.offset = 0; loadJobs(); });
 $('role').addEventListener('change', (e) => { state.role = e.target.value; state.offset = 0; loadJobs(); });
 $('remote').addEventListener('change', (e) => { state.remote = e.target.value; state.offset = 0; loadJobs(); });
@@ -202,7 +200,7 @@ addEventListener('resize', () => {
     $('country').innerHTML = countries.map((c) =>
       `<option value="${esc(c.key)}"${c.key === state.country ? ' selected' : ''}>${esc(c.label)}</option>`).join('');
   } catch {
-    $('country').innerHTML = '<option value="india">India</option><option value="usa">United States</option>';
+    $('country').innerHTML = '<option value="india">India</option>';
   }
   reloadAll();
 })();

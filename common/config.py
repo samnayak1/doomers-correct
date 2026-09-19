@@ -58,15 +58,6 @@ COUNTRIES: dict[str, dict] = {
         # rows. Add it back via SITES_INDIA once you have proxies.
         "sites": _sites("SITES_INDIA", ["indeed", "linkedin"]),
     },
-    "usa": {
-        "label": "United States",
-        "prose": "the United States",
-        "indeed": "USA",
-        "currency": "USD",
-        "locations": _locs("LOCATIONS_USA", ["United States"]),
-
-        "sites": _sites("SITES_USA", ["indeed", "linkedin"]),
-    },
 }
 DEFAULT_COUNTRY = os.environ.get("DEFAULT_COUNTRY", "india")
 
@@ -97,7 +88,18 @@ TECH_TITLE_EXCLUDE = os.environ.get("TECH_TITLE_EXCLUDE", r"""
     chemical\s*engineer|site\s*engineer|safety\s*engineer|nurse|driver
 """)
 
-RESULTS_WANTED = _int("RESULTS_WANTED", 60)          # per (site, term, location)
+# The series starts here, ignoring anything scraped before it. Set this whenever
+# a scrape-volume knob changes: RESULTS_WANTED, SEARCH_TERMS, sites or locations
+# all shift the LEVEL of the curve without the market having moved, and a model
+# fitted across that step reads the instrument change as a trend. Data before
+# this date stays in the database, it is just not a comparable measurement.
+SERIES_FROM = os.environ.get("SERIES_FROM", "").strip() or None
+
+RESULTS_WANTED = _int("RESULTS_WANTED", 300)         # per (site, term, location)
+# 60 saturated every single query - 14 terms as different in size as "software
+# engineer" and "iOS developer" all returned exactly 60, which is a ceiling, not
+# a measurement. A cap the market cannot fall below makes the whole series
+# insensitive to decline, which is the one thing this site exists to show.
 HOURS_OLD = _int("HOURS_OLD", 72)                    # only recent postings
 SCRAPE_PAUSE_SEC = _float("SCRAPE_PAUSE_SEC", 3.0)   # politeness delay between calls
 KEEP_DESCRIPTIONS = _bool("KEEP_DESCRIPTIONS", False)  # descriptions are ~90% of the bytes
