@@ -166,12 +166,37 @@ async function loadJobs() {
 }
 
 /* ── wiring ────────────────────────────────────────────────────────────── */
+async function loadRuns() {
+  const tb = $('runs').querySelector('tbody');
+  try {
+    const { runs } = await api('/api/history', { country: state.country, limit: 10 });
+    if (!runs.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">No scrapes recorded yet.</td></tr>';
+      return;
+    }
+    const dur = (s) => (s == null ? '—' : s < 90 ? `${Math.round(s)}s` : `${Math.round(s / 60)}m`);
+    // active_total stopped being written when the all-roles view was removed, so
+    // older rows carry it and newer ones do not. It is deliberately not shown.
+    tb.innerHTML = runs.map((r) => `<tr>
+      <td class="num">${esc(fmtDate(r.scrape_date))}</td>
+      <td class="num">${r.rows_seen == null ? '—' : nf.format(r.rows_seen)}</td>
+      <td class="num">${r.new_jobs == null ? '—' : nf.format(r.new_jobs)}</td>
+      <td class="num">${r.tech_active == null ? '—' : nf.format(r.tech_active)}</td>
+      <td class="num">${r.remote_active == null ? '—' : nf.format(r.remote_active)}</td>
+      <td class="num">${esc(dur(r.duration_sec))}</td>
+      <td><span class="pill ${r.ok ? 'ok' : 'bad'}">${r.ok ? 'OK' : 'Failed'}</span></td>
+    </tr>`).join('');
+  } catch (err) {
+    tb.innerHTML = `<tr><td colspan="7" class="empty">Could not load run history — ${esc(err.message)}</td></tr>`;
+  }
+}
+
 function reloadAll() {
   state.offset = 0;
   const u = new URL(location);
   u.searchParams.set('country', state.country);
   history.replaceState(null, '', u);
-  loadSeries(); loadJobs();
+  loadSeries(); loadJobs(); loadRuns();
 }
 
 $('country').addEventListener('change', (e) => { state.country = e.target.value; state.site = ''; state.role = ''; reloadAll(); });

@@ -80,6 +80,20 @@
     </div>
   </section>
 
+  <section class="panel" id="panel-runs" aria-labelledby="runs-title">
+    <h2 class="panel-title" id="runs-title">Recent scrapes</h2>
+    <p class="caption">The last ten nightly runs behind the numbers above.</p>
+    <div class="table-scroll">
+      <table id="runs">
+        <thead><tr>
+          <th>Date</th><th>Rows fetched</th><th>New</th><th>Active tech</th>
+          <th>Remote</th><th>Took</th><th>Status</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <details class="method">
     <summary>Method and caveats</summary>
     <p><strong>Collection.</strong> Every night at midnight a worker queries public job boards

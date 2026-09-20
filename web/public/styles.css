@@ -132,6 +132,8 @@ td.co { max-width: 190px; }
 .pill { display: inline-block; font-size: 10.5px; padding: 1px 7px; border-radius: 10px;
   border: 1px solid var(--border-strong); color: var(--ink-soft); white-space: nowrap; }
 .pill.remote { border-color: var(--link); color: var(--link); }
+.pill.ok  { border-color: var(--good); color: var(--good); }
+.pill.bad { border-color: var(--bad);  color: var(--bad); }
 .pager { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
 .pager button { font: inherit; font-size: 13px; cursor: pointer; color: var(--ink);
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 7px 14px; }
@@ -158,7 +160,13 @@ footer a { font-weight: 600; }
   .filters { grid-template-columns: 1fr; }
   select, input[type="search"] { font-size: 16px; min-height: 42px; }  /* stops iOS zooming */
 
-  .table-scroll { overflow-x: visible; border: 0; background: transparent; }
+  /* Scoped to the listings table: it becomes a stack of cards below, so it no
+     longer needs to scroll. Other tables on the page keep their scroller -
+     without this they simply overflow the viewport with no way to reach the
+     right-hand columns. */
+  #panel-listings .table-scroll { overflow-x: visible; border: 0; background: transparent; }
+  #panel-runs .table-scroll { -webkit-overflow-scrolling: touch; }
+  #runs { min-width: 560px; }
   #jobs, #jobs tbody, #jobs tr, #jobs td { display: block; width: 100%; }
   #jobs thead { display: none; }
   #jobs tr { background: var(--bg); border: 1px solid var(--panel-edge);
