@@ -52,13 +52,27 @@ def next_run(now: datetime) -> datetime:
     return target
 
 
+# A normal run takes 20-30 minutes. The cap only exists so that one wedged run
+# - a stalled connection, a board holding a request open - cannot block this
+# loop and with it every later night's scrape. Whatever the run had already
+# upserted stays; only that night's snapshot row is missing.
+RUN_TIMEOUT_MIN = int(os.environ.get("RUN_TIMEOUT_MIN", "180"))
+
+
 def run_once() -> int:
     log("starting scrape run")
     started = time.time()
-    proc = subprocess.run(
-        [sys.executable, "-u", "-m", "common.pipeline", "--country", "all"],
-        cwd="/app", env={**os.environ, "PYTHONPATH": "/app"},
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-u", "-m", "common.pipeline", "--country", "all"],
+            cwd="/app", env={**os.environ, "PYTHONPATH": "/app"},
+            timeout=RUN_TIMEOUT_MIN * 60,
+        )
+    except subprocess.TimeoutExpired:
+        # subprocess.run has already killed the child by the time this is raised.
+        log(f"run KILLED after {RUN_TIMEOUT_MIN} min - it never finished; "
+            f"next run proceeds on schedule")
+        return -1
     log(f"run finished rc={proc.returncode} in {time.time() - started:.0f}s")
     return proc.returncode
 
