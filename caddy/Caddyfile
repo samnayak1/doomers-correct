@@ -35,10 +35,22 @@
 		-Server
 	}
 
+	# Access log: one JSON line per request, read by scripts/http_stats.py for
+	# p95/p99 latency and error rates. Headers are dropped - nothing in them is
+	# needed and they are most of each line's size. Client IPs are cut to their
+	# /24 (IPv4) or /48 (IPv6): enough to spot one abusive network, not enough
+	# to identify a visitor. Rotation is the json-file driver's 3 x 10 MB.
 	log {
 		output stdout
-		format console
-		level WARN
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				resp_headers delete
+				request>remote_ip ip_mask 24 48
+				request>client_ip ip_mask 24 48
+			}
+		}
 	}
 }
 
