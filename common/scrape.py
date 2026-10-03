@@ -100,7 +100,7 @@ def scrape_country(country: str, run_day: date | None = None, log=print) -> Iter
             site_name=[site],
             search_term=term,
             location=loc,
-            results_wanted=config.RESULTS_WANTED, # per site, per term, per location
+            results_wanted=config.results_wanted(site),  # per site, per term, per location
             country_indeed=cfg["indeed"],
             description_format="markdown",
             linkedin_fetch_description=False,

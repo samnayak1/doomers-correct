@@ -235,3 +235,7 @@ class ForecastRepository:
     def save(self, country: str, metric: str, payload: dict, at: str) -> None:
         Forecast.replace(country=country, metric=metric, generated_at=at,
                          payload=json.dumps(payload, separators=(",", ":"))).execute()
+
+    def clear(self, country: str, metric: str) -> int:
+        return Forecast.delete().where(
+            (Forecast.country == country) & (Forecast.metric == metric)).execute()

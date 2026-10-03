@@ -181,11 +181,15 @@ class ForecastService:
 
 
         scrapes = series.get("observed_days", 0)
-        if scrapes < config.FORECAST_MIN_POINTS:
+        if scrapes < config.FORECAST_MIN_POINTS or not dates:
+            # Drop the cached fit, don't just decline to replace it. After a
+            # SERIES_FROM reset the old forecast was fitted on the previous level
+            # of the curve, and the API would keep drawing it off the end of the
+            # new, short series until seven fresh scrapes accumulated.
+            if self.forecasts.clear(country, "tech_active"):
+                log(f"[forecast] {country}: cleared the cached forecast - it no longer matches the series")
             log(f"[forecast] {country}: {scrapes} completed scrape(s) over "
                 f"{len(dates)} day(s), need {config.FORECAST_MIN_POINTS} - skipping")
-            return None
-        if not dates:
             return None
 
         from .forecast import forecast_series  # lazy: pulls in numpy

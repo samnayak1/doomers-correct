@@ -100,6 +100,19 @@ RESULTS_WANTED = _int("RESULTS_WANTED", 300)         # per (site, term, location
 # engineer" and "iOS developer" all returned exactly 60, which is a ceiling, not
 # a measurement. A cap the market cannot fall below makes the whole series
 # insensitive to decline, which is the one thing this site exists to show.
+# Per-site overrides, RESULTS_WANTED_<SITE>. Indeed answered exactly 300 for the
+# biggest terms (software, backend, data, ML, cloud, security) on essentially
+# every night while LinkedIn never came close, so one shared ceiling was still a
+# ceiling on half the data. Indeed pages are cheap (~7s a query), LinkedIn's are
+# not, so only Indeed gets the deeper fetch.
+_RESULTS_WANTED_SITE = {"indeed": 1000}
+
+
+def results_wanted(site: str) -> int:
+    return _int(f"RESULTS_WANTED_{site.upper()}",
+                _RESULTS_WANTED_SITE.get(site, RESULTS_WANTED))
+
+
 HOURS_OLD = _int("HOURS_OLD", 72)                    # only recent postings
 SCRAPE_PAUSE_SEC = _float("SCRAPE_PAUSE_SEC", 3.0)   # politeness delay between calls
 KEEP_DESCRIPTIONS = _bool("KEEP_DESCRIPTIONS", False)  # descriptions are ~90% of the bytes
