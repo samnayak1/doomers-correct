@@ -12,11 +12,13 @@ from datetime import datetime, timezone
 
 import peewee
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from common import config, db, service
+from pydantic import BaseModel, Field
+
+from common import config, contact, db, service
 
 app = FastAPI(title="Are doomers correct?", docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -113,3 +115,30 @@ def history(country: str = Query(config.DEFAULT_COUNTRY), limit: int = Query(60,
     country = config.country_key(country)
     with services() as svc:
         return {"country": country, "runs": svc.series.history(country, limit)}
+
+
+class ContactIn(BaseModel):
+    # Generous upper bounds only; the real rules live in common.contact.clean.
+    name: str = Field("", max_length=200)
+    email: str = Field(..., max_length=320)
+    message: str = Field(..., max_length=8000)
+    token: str = Field(..., max_length=2000)
+
+
+@app.get("/api/contact")
+def contact_config():
+    return {"enabled": contact.enabled(), "endpoint": contact.widget_endpoint()}
+
+
+@app.post("/api/contact")
+def contact_send(body: ContactIn, request: Request):
+    # Caddy and nginx both append the real client to X-Forwarded-For, so the
+    # last entry is the one a visitor cannot forge. The API is never exposed
+    # directly - only through the proxy - which is what makes that safe.
+    fwd = request.headers.get("x-forwarded-for", "")
+    ip = fwd.split(",")[-1].strip() if fwd else (request.client.host if request.client else "?")
+    try:
+        contact.submit(body.name, body.email, body.message, body.token, ip)
+    except contact.ContactError as exc:
+        raise HTTPException(exc.status, str(exc))
+    return {"ok": True}

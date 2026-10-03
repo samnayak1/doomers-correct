@@ -218,6 +218,97 @@ addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { if (lastSeries) renderChart(lastSeries); }, 150);
 });
 
+/* ── contact ───────────────────────────────────────────────────────────── */
+// Nothing here runs until someone opens the form: readers of the chart never
+// download the widget or start a proof-of-work they did not ask for.
+let capEndpoint = null;
+let capToken = '';
+let contactReady = null;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error(`could not load ${src}`));
+    document.head.appendChild(el);
+  });
+}
+
+// Tokens are single-use, so every attempt - sent or refused - gets a fresh widget.
+function mountCap() {
+  capToken = '';
+  const w = document.createElement('cap-widget');
+  w.setAttribute('data-cap-api-endpoint', capEndpoint);
+  w.addEventListener('solve', (e) => { capToken = e.detail.token; });
+  w.addEventListener('reset', () => { capToken = ''; });
+  w.addEventListener('error', () => { capToken = ''; });
+  $('cap-slot').replaceChildren(w);
+}
+
+function prepareContact() {
+  contactReady ||= (async () => {
+    try {
+      const cfg = await api('/api/contact');
+      if (!cfg.enabled) throw new Error('not configured');
+      capEndpoint = cfg.endpoint;
+      await loadScript('/vendor/cap.min.js');
+      mountCap();
+      return true;
+    } catch {
+      $('contact-send').disabled = true;
+      $('contact-status').textContent = 'The contact form is unavailable right now.';
+      return false;
+    }
+  })();
+  return contactReady;
+}
+
+$('contact').addEventListener('toggle', (e) => { if (e.currentTarget.open) prepareContact(); });
+$('contact-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('contact').open = true;
+  $('contact').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+if (location.hash === '#contact') $('contact').open = true;
+
+$('contact-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.currentTarget;
+  const status = $('contact-status');
+  const btn = $('contact-send');
+  // form.name is the form's own name attribute, so fields go through elements.
+  const val = (n) => f.elements.namedItem(n).value;
+  if (!f.reportValidity()) return;
+  if (!(await prepareContact())) return;
+
+  btn.disabled = true;
+  try {
+    if (!capToken) {
+      // Solve on submit rather than making the visitor click the widget first.
+      status.textContent = 'Verifying…';
+      try { await $('cap-slot').querySelector('cap-widget').solve(); } catch { /* reported below */ }
+      if (!capToken) throw new Error('Verification did not complete. Please try again.');
+    }
+    status.textContent = 'Sending…';
+    const r = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: val('name'), email: val('email'), message: val('message'), token: capToken }),
+    });
+    const d = await r.json().catch(() => ({}));
+    // FastAPI's own validation errors arrive as a list, ours as a string.
+    if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'Please check the form and try again.');
+    f.reset();
+    status.textContent = 'Thanks — your message was sent.';
+  } catch (err) {
+    status.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    mountCap();
+  }
+});
+
 (async function init() {
   try {
     const { countries, default: def } = await api('/api/countries');

@@ -134,6 +134,24 @@ ROLE_CATEGORIES = [
     "product_management", "sales_engineer", "other",
 ]
 
+# --- contact form ----------------------------------------------------------- #
+# A message is accepted only with a valid Cap token (self-hosted proof-of-work
+# CAPTCHA), then emailed through SES so no address ever appears on the page.
+# The form switches itself off unless every value below is set.
+CAP_URL = os.environ.get("CAP_URL", "http://cap:3000").rstrip("/")   # internal only
+CAP_SITE_KEY = os.environ.get("CAP_SITE_KEY", "").strip()
+CAP_SECRET = os.environ.get("CAP_SECRET", "").strip()
+CONTACT_TO = os.environ.get("CONTACT_TO", "").strip()
+# The SES sender. Best as an address on your own SES-verified domain. Left
+# empty it falls back to CONTACT_TO, so verifying that one address is enough -
+# but mail "from" a protonmail/gmail address sent by SES fails that provider's
+# DMARC check, so expect it in spam until you mark it as not spam.
+CONTACT_FROM = os.environ.get("CONTACT_FROM", "").strip() or CONTACT_TO
+SES_REGION = os.environ.get("SES_REGION", AWS_REGION)
+CONTACT_PER_IP_HOUR = _int("CONTACT_PER_IP_HOUR", 5)
+# Ceiling across everyone, so rotating IPs cannot turn the form into a mailer.
+CONTACT_PER_DAY = _int("CONTACT_PER_DAY", 50)
+
 # --- forecast --------------------------------------------------------------- #
 FORECAST_UNTIL = os.environ.get("FORECAST_UNTIL", "2027-12-31")
 FORECAST_MIN_POINTS = _int("FORECAST_MIN_POINTS", 7)    # below this: no forecast at all

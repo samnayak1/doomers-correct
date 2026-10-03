@@ -7,6 +7,15 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
+	# Cap's widget needs exactly two routes. Everything else the container
+	# serves - the admin dashboard, siteverify with its secret - stays off the
+	# internet; an unmatched /cap/... path just falls through to the page.
+	@cap path_regexp ^/cap/[A-Za-z0-9_-]+/(challenge|redeem)$
+	handle @cap {
+		uri strip_prefix /cap
+		reverse_proxy cap:3000
+	}
+
 	handle /api/* {
 		reverse_proxy api:8000 {
 			health_uri /api/health

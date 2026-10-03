@@ -55,12 +55,12 @@ a:hover { text-decoration: underline; }
 .subtitle { margin: 0; font-size: 16px; font-weight: 400; color: var(--ink-soft); }
 .credit { margin: 4px 0 0; font-size: 13px; color: var(--ink-mute); }
 .controls { display: flex; gap: 8px; }
-select, input[type="search"] {
+select, input[type="search"], .contact-form input, .contact-form textarea {
   font: inherit; font-size: 14px; color: var(--ink);
   background: var(--bg); border: 1px solid var(--border);
   border-radius: 4px; padding: 6px 9px; min-height: 34px;
 }
-select:focus-visible, input:focus-visible, button:focus-visible {
+select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
@@ -144,6 +144,20 @@ td.co { max-width: 190px; }
 details.method { margin-top: 22px; font-size: 13px; }
 details.method summary { cursor: pointer; font-weight: 600; color: var(--ink-soft); }
 details.method p { color: var(--ink-mute); max-width: 82ch; line-height: 1.55; }
+.contact-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px;
+  margin: 14px 0 4px; max-width: 720px; }
+.contact-form label { display: flex; flex-direction: column; gap: 5px;
+  font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.contact-form .opt { font-weight: 400; color: var(--ink-mute); }
+.contact-form .wide { grid-column: 1 / -1; }
+.contact-form textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+.contact-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.contact-actions button { font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  color: #fff; background: var(--accent); border: 1px solid var(--accent);
+  border-radius: 4px; padding: 8px 18px; min-height: 38px; }
+.contact-actions button:disabled { opacity: .55; cursor: default; }
+.contact-status { font-size: 13px; color: var(--ink-soft); }
+
 footer { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border);
   font-size: 15px; line-height: 1.7; color: var(--ink-soft); }
 footer a { font-weight: 600; }
@@ -159,6 +173,10 @@ footer a { font-weight: 600; }
   .headline b { font-size: 25px; }
   .filters { grid-template-columns: 1fr; }
   select, input[type="search"] { font-size: 16px; min-height: 42px; }  /* stops iOS zooming */
+  .contact-form { grid-template-columns: 1fr; }
+  .contact-form input, .contact-form textarea { font-size: 16px; }
+  .contact-form input { min-height: 44px; }
+  .contact-actions button { min-height: 44px; flex: 1 1 100%; }
 
   /* Scoped to the listings table: it becomes a stack of cards below, so it no
      longer needs to scroll. Other tables on the page keep their scroller -

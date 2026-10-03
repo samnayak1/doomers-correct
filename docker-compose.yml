@@ -108,8 +108,9 @@ services:
       # even to read. The API opens the file with `file:...?mode=ro` instead.
       - data:/data
     # Measured at 44 MiB serving live traffic; 112 leaves 2.5x. The 48 MiB
-    # freed here is what pays for db-replicate's raise, so the totals are
-    # unchanged: 752 MiB dev, 784 MiB prod.
+    # freed here is what pays for db-replicate's raise. Ceilings now total
+    # 880 MiB dev, 912 MiB prod with cap + valkey - ceilings, not usage; the
+    # stack idles near 250 MiB and only the worker climbs, during a scrape.
     user: "10001:0"
     mem_limit: 112m
     mem_reservation: 48m
@@ -145,5 +146,47 @@ services:
     pids_limit: 128
     logging: *logging
 
+  # Self-hosted proof-of-work CAPTCHA guarding the contact form. The proxy
+  # forwards only /cap/<key>/challenge and /cap/<key>/redeem; the dashboard and
+  # siteverify are reachable from the compose network and from 127.0.0.1 on the
+  # host (for an SSH tunnel), never from the internet. Cap trusts
+  # X-Forwarded-For for its own rate limiting, which is only safe because of that.
+  cap:
+    image: tiago2/cap:3.1.14
+    restart: unless-stopped
+    environment:
+      ADMIN_KEY: ${CAP_ADMIN_KEY:-}
+      REDIS_URL: redis://valkey:6379
+    depends_on:
+      valkey:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3000:3000"
+    # ~50 MiB idle per upstream; runs as the image's unprivileged bun user.
+    mem_limit: 96m
+    mem_reservation: 32m
+    cpus: 0.25
+    pids_limit: 64
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+  # Cap's store: site keys plus short-lived challenges. noeviction, not an LRU
+  # policy - under memory pressure an LRU would happily evict the site key and
+  # silently break the form. The dataset is kilobytes; 16 MB is a tripwire.
+  valkey:
+    image: valkey/valkey:9-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--save", "60", "1", "--appendonly", "no",
+              "--maxmemory", "16mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - valkey-data:/data
+    mem_limit: 32m
+    mem_reservation: 8m
+    cpus: 0.25
+    pids_limit: 64
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
 volumes:
   data:
+  valkey-data:

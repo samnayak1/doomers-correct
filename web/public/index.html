@@ -108,9 +108,25 @@
     is a 95% prediction interval.</p>
   </details>
 
+  <details class="method" id="contact">
+    <summary>Contact &mdash; report a problem or contribute</summary>
+    <form class="contact-form" id="contact-form" novalidate>
+      <label>Name <span class="opt">(optional)</span>
+        <input type="text" name="name" maxlength="100" autocomplete="name"></label>
+      <label>Email <span class="opt">(so we can reply)</span>
+        <input type="email" name="email" maxlength="254" required autocomplete="email"></label>
+      <label class="wide">Message
+        <textarea name="message" rows="6" minlength="10" maxlength="4000" required></textarea></label>
+      <div class="wide cap-slot" id="cap-slot"></div>
+      <div class="wide contact-actions">
+        <button type="submit" id="contact-send">Send message</button>
+        <span class="contact-status" id="contact-status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+  </details>
+
   <footer>
-    Contact <a href="mailto:ww-developer@protonmail.com">ww-developer@protonmail.com</a>
-    for problems or to contribute.
+    <a href="#contact" id="contact-link">Contact us</a> for problems or to contribute.
     <br>Data from public job boards. Not affiliated with any board or employer.
   </footer>
 </div>
