@@ -109,7 +109,7 @@ services:
       - data:/data
     # Measured at 44 MiB serving live traffic; 112 leaves 2.5x. The 48 MiB
     # freed here is what pays for db-replicate's raise. Ceilings now total
-    # 880 MiB dev, 912 MiB prod with cap + valkey - ceilings, not usage; the
+    # 880 MiB dev, 976 MiB prod with cap, valkey + goatcounter - ceilings, not usage; the
     # stack idles near 250 MiB and only the worker climbs, during a scrape.
     user: "10001:0"
     mem_limit: 112m

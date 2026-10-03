@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 def _int(name: str, default: int) -> int:
@@ -161,6 +162,14 @@ TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org").rstrip
 CONTACT_PER_IP_HOUR = _int("CONTACT_PER_IP_HOUR", 5)
 # Ceiling across everyone, so rotating IPs cannot turn the form into a mailer.
 CONTACT_PER_DAY = _int("CONTACT_PER_DAY", 50)
+
+# --- analytics -------------------------------------------------------------- #
+# Self-hosted GoatCounter (cookieless, so no consent banner) on its own
+# subdomain, e.g. stats.yourdomain. Empty keeps analytics off entirely.
+# Validated as a hostname since it is interpolated into a URL the page loads.
+_gc = os.environ.get("GOATCOUNTER_HOST", "").strip().lower()
+GOATCOUNTER_HOST = _gc if re.fullmatch(
+    r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+", _gc) else ""
 
 # --- forecast --------------------------------------------------------------- #
 FORECAST_UNTIL = os.environ.get("FORECAST_UNTIL", "2027-12-31")

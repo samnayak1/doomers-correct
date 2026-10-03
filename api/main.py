@@ -125,6 +125,12 @@ class ContactIn(BaseModel):
     token: str = Field(..., max_length=2000)
 
 
+@app.get("/api/site")
+def site():
+    gc = config.GOATCOUNTER_HOST
+    return {"analytics": f"https://{gc}/count" if gc else None}
+
+
 @app.get("/api/contact")
 def contact_config():
     return {"enabled": contact.enabled(), "endpoint": contact.widget_endpoint()}

@@ -41,3 +41,25 @@
 		level WARN
 	}
 }
+
+# Analytics dashboard and collector. The *.localhost fallback is deliberate:
+# with GOATCOUNTER_HOST unset Caddy issues itself a local certificate for it
+# instead of asking Let's Encrypt for a name that does not exist.
+{$GOATCOUNTER_HOST:goatcounter.localhost} {
+	encode zstd gzip
+	reverse_proxy goatcounter:8080 {
+		# Set from the real connection, so a visitor cannot forge it. GoatCounter
+		# reads X-Real-IP first; it drives unique-visitor counting and countries.
+		header_up X-Real-IP {remote_host}
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	log {
+		output stdout
+		format console
+		level WARN
+	}
+}

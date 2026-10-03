@@ -199,9 +199,17 @@ function reloadAll() {
   loadSeries(); loadJobs(); loadRuns();
 }
 
-$('country').addEventListener('change', (e) => { state.country = e.target.value; state.site = ''; state.role = ''; reloadAll(); });
-$('site').addEventListener('change', (e) => { state.site = e.target.value; state.offset = 0; loadJobs(); });
-$('role').addEventListener('change', (e) => { state.role = e.target.value; state.offset = 0; loadJobs(); });
+/* ── analytics ─────────────────────────────────────────────────────────── */
+// Events only record WHICH control was used and the option picked - never the
+// search box or anything typed into the contact form. A no-op until the
+// script has loaded, and permanently if it is blocked or not configured.
+const track = (path, title) => {
+  try { window.goatcounter?.count?.({ path, title, event: true }); } catch { /* never break the page */ }
+};
+
+$('country').addEventListener('change', (e) => { state.country = e.target.value; state.site = ''; state.role = ''; reloadAll(); track(`country-${state.country}`, 'Country'); });
+$('site').addEventListener('change', (e) => { state.site = e.target.value; state.offset = 0; loadJobs(); track(`source-${state.site || 'all'}`, 'Source filter'); });
+$('role').addEventListener('change', (e) => { state.role = e.target.value; state.offset = 0; loadJobs(); track(`role-${state.role || 'all'}`, 'Role filter'); });
 $('remote').addEventListener('change', (e) => { state.remote = e.target.value; state.offset = 0; loadJobs(); });
 $('sort').addEventListener('change', (e) => { state.sort = e.target.value; state.offset = 0; loadJobs(); });
 $('q').addEventListener('input', (e) => {
@@ -264,7 +272,7 @@ function prepareContact() {
   return contactReady;
 }
 
-$('contact').addEventListener('toggle', (e) => { if (e.currentTarget.open) prepareContact(); });
+$('contact').addEventListener('toggle', (e) => { if (e.currentTarget.open) { prepareContact(); track('contact-open', 'Contact form opened'); } });
 $('contact-link').addEventListener('click', (e) => {
   e.preventDefault();
   $('contact').open = true;
@@ -301,6 +309,7 @@ $('contact-form').addEventListener('submit', async (e) => {
     if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'Please check the form and try again.');
     f.reset();
     status.textContent = 'Thanks — your message was sent.';
+    track('contact-sent', 'Contact form sent');
   } catch (err) {
     status.textContent = err.message;
   } finally {
@@ -308,6 +317,21 @@ $('contact-form').addEventListener('submit', async (e) => {
     mountCap();
   }
 });
+
+// Loaded after the page is up, and only when GOATCOUNTER_HOST is set. The
+// script counts the page view itself on load, and skips localhost and private
+// addresses on its own, so dev traffic never reaches the stats.
+async function loadAnalytics() {
+  try {
+    const { analytics } = await api('/api/site');
+    if (!analytics) return;
+    const el = document.createElement('script');
+    el.async = true;
+    el.src = '/vendor/goatcounter.js';
+    el.dataset.goatcounter = analytics;
+    document.head.appendChild(el);
+  } catch { /* analytics is optional */ }
+}
 
 (async function init() {
   try {
@@ -319,4 +343,5 @@ $('contact-form').addEventListener('submit', async (e) => {
     $('country').innerHTML = '<option value="india">India</option>';
   }
   reloadAll();
+  loadAnalytics();
 })();
