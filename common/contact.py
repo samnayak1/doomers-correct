@@ -1,8 +1,8 @@
-"""Contact form: validate, rate-limit, verify a Cap token, email through SES.
+"""Contact form: validate, rate-limit, verify a Cap token, deliver via Telegram.
 
 The API stays read-only against the database - messages are not stored, only
-delivered. If SES refuses, the visitor is told so and can retry, rather than
-the message vanishing into a table nobody reads.
+delivered. If Telegram refuses, the visitor is told so and can retry, rather
+than the message vanishing into a table nobody reads.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import json
 import re
 import threading
 import time
+import urllib.error
 import urllib.request
 from collections import deque
 
@@ -29,7 +30,7 @@ class ContactError(Exception):
 
 def enabled() -> bool:
     return all((config.CAP_SITE_KEY, config.CAP_SECRET,
-                config.CONTACT_TO, config.CONTACT_FROM))
+                config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID))
 
 
 def widget_endpoint() -> str | None:
@@ -116,23 +117,36 @@ def verify(token: str) -> bool:
 
 
 def send(name: str, email: str, message: str, ip: str) -> None:
-    import boto3
+    """Post the message to your chat as your bot.
 
-    who = name or "(no name given)"
-    body = f"From: {who} <{email}>\nIP: {ip}\n\n{message}\n"
+    Plain text on purpose: no parse_mode means nothing a visitor types can be
+    read as Markdown or HTML formatting. Link previews are off so Telegram does
+    not go and fetch whatever URL a visitor pastes.
+    """
+    head = f"New message from aredoomerscorrect\nFrom: {name or '(no name given)'} <{email}>\nIP: {ip}\n\n"
+    text = head + message[: 4096 - len(head)]   # Telegram's per-message limit
+    req = urllib.request.Request(
+        f"{config.TELEGRAM_API}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
+        data=json.dumps({"chat_id": config.TELEGRAM_CHAT_ID, "text": text,
+                         "disable_web_page_preview": True}).encode(),
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
     try:
-        boto3.client("ses", region_name=config.SES_REGION).send_email(
-            Source=config.CONTACT_FROM,
-            Destination={"ToAddresses": [config.CONTACT_TO]},
-            # Reply-To is the visitor, so hitting reply in your mail client just works.
-            ReplyToAddresses=[email],
-            Message={
-                "Subject": {"Data": f"[aredoomerscorrect] {who}"[:150], "Charset": "UTF-8"},
-                "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
-            },
-        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            ok = json.load(r).get("ok")
+    except urllib.error.HTTPError as exc:
+        # Telegram explains itself in the body ("chat not found", "Unauthorized").
+        # Log that, never the URL - the bot token is part of it.
+        try:
+            why = json.load(exc).get("description", "")
+        except Exception:
+            why = ""
+        print(f"[contact] Telegram refused: HTTP {exc.code} {why}", flush=True)
+        ok = False
     except Exception as exc:
-        print(f"[contact] SES send failed: {type(exc).__name__}: {exc}", flush=True)
+        print(f"[contact] Telegram unreachable: {type(exc).__name__}", flush=True)
+        ok = False
+    if not ok:
         raise ContactError(502, "The message could not be sent. Please try again in a few minutes.")
 
 

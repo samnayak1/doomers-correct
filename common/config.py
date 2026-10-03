@@ -136,18 +136,15 @@ ROLE_CATEGORIES = [
 
 # --- contact form ----------------------------------------------------------- #
 # A message is accepted only with a valid Cap token (self-hosted proof-of-work
-# CAPTCHA), then emailed through SES so no address ever appears on the page.
-# The form switches itself off unless every value below is set.
+# CAPTCHA), then delivered to you as a Telegram message from your own bot - no
+# address on the page, and no email deliverability to fight. The form switches
+# itself off unless every value below is set.
 CAP_URL = os.environ.get("CAP_URL", "http://cap:3000").rstrip("/")   # internal only
 CAP_SITE_KEY = os.environ.get("CAP_SITE_KEY", "").strip()
 CAP_SECRET = os.environ.get("CAP_SECRET", "").strip()
-CONTACT_TO = os.environ.get("CONTACT_TO", "").strip()
-# The SES sender. Best as an address on your own SES-verified domain. Left
-# empty it falls back to CONTACT_TO, so verifying that one address is enough -
-# but mail "from" a protonmail/gmail address sent by SES fails that provider's
-# DMARC check, so expect it in spam until you mark it as not spam.
-CONTACT_FROM = os.environ.get("CONTACT_FROM", "").strip() or CONTACT_TO
-SES_REGION = os.environ.get("SES_REGION", AWS_REGION)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org").rstrip("/")
 CONTACT_PER_IP_HOUR = _int("CONTACT_PER_IP_HOUR", 5)
 # Ceiling across everyone, so rotating IPs cannot turn the form into a mailer.
 CONTACT_PER_DAY = _int("CONTACT_PER_DAY", 50)
