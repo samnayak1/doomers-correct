@@ -24,6 +24,13 @@ function monthTicks(d0, d1, maxTicks) {
   return out.filter((_, i) => i % stride === 0);
 }
 
+/** Round up to a 1 / 2 / 2.5 / 5 x 10^k step so the top gridline is a clean number. */
+function niceCeil(v) {
+  if (!(v > 0)) return 10;
+  const mag = 10 ** Math.floor(Math.log10(v));
+  return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((n) => n >= v);
+}
+
 /** One direct label at the end of the horizon — never a number on every point. */
 const endLabel = {
   id: 'endLabel',
@@ -99,6 +106,14 @@ export function drawChart(host, data) {
     });
   }
 
+  // Scale to the observed series and the forecast line, never to the band. A
+  // log-space ARIMA interval widens exponentially with the horizon - 14 months
+  // out its upper edge was 200x the data, which flattened everything real into
+  // the x-axis. The band is clipped at the top instead; the tooltip still
+  // reports the true range, and the caller is told so the legend can say so.
+  const yTop = niceCeil(1.25 * Math.max(...hist.map((p) => p.y), ...fc.map((p) => p.y)));
+  const bandClipped = fc.some((p) => p.hi > yTop);
+
   const byDay = new Map(fc.map((p) => [p.x, p]));
   const last = fc.length ? fc[fc.length - 1] : null;
 
@@ -136,6 +151,7 @@ export function drawChart(host, data) {
         },
         y: {
           beginAtZero: true,
+          max: yTop,
           grid: { color: grid, drawTicks: false },
           border: { display: false },
           ticks: {
@@ -176,5 +192,5 @@ export function drawChart(host, data) {
     host._chart.options.plugins.endLabel.y = yScale.getPixelForValue(Math.min(last.hi, yScale.max));
     host._chart.update('none');
   }
-
+  return { bandClipped };
 }

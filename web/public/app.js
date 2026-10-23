@@ -63,10 +63,12 @@ function renderHeadline(d) {
 function renderChart(d) {
   const s = d.series || { dates: [], values: [] };
   const history = s.dates.map((date, i) => ({ date, value: s.values[i] }));
-  drawChart($('chart'), {
+  const drawn = drawChart($('chart'), {
     history,
     forecast: d.forecast ? d.forecast.points : [],
-  });
+  }) || {};
+  $('lg-band').lastChild.textContent = drawn.bandClipped
+    ? '95% interval (runs past the top — hover for the range)' : '95% interval';
   // Legend entries only for marks that are actually on the chart.
   $('lg-forecast').hidden = !d.forecast;
   $('lg-band').hidden = !d.forecast;
