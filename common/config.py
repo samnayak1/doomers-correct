@@ -148,6 +148,30 @@ ROLE_CATEGORIES = [
     "product_management", "sales_engineer", "other",
 ]
 
+# --- resume matching ---------------------------------------------------------- #
+# Every tech listing gets an embedding the night it is scraped, stored in a
+# sqlite-vec table inside jobs.db. A visitor's resume is turned into a profile
+# by GEMINI_MODEL, embedded the same way, and ranked by cosine distance.
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "gemini-embedding-2")
+# Changing either of these rebuilds the vector table on the next run - vectors
+# from different models or sizes are not comparable.
+EMBED_DIM = _int("EMBED_DIM", 768)
+EMBED_BATCH = _int("EMBED_BATCH", 100)                # the API's per-request maximum
+EMBED_MAX_PER_RUN = _int("EMBED_MAX_PER_RUN", 6000)   # bounds a first-time backfill
+EMBED_TIMEOUT = _int("EMBED_TIMEOUT", 60)
+# Only listings seen this recently are matchable; older vectors are pruned each
+# night, so the table holds a rolling window rather than all of history.
+MATCH_WINDOW_DAYS = _int("MATCH_WINDOW_DAYS", 21)
+MATCH_RESULTS = _int("MATCH_RESULTS", 25)
+MATCH_CANDIDATES = _int("MATCH_CANDIDATES", 200)      # KNN pool re-ranked into MATCH_RESULTS
+MATCH_MAX_PDF_BYTES = _int("MATCH_MAX_PDF_BYTES", 2_000_000)
+MATCH_TIMEOUT = _int("MATCH_TIMEOUT", 45)
+# Each match costs two Gemini calls, so it is captcha-gated and rate-limited
+# like the contact form, with a global daily ceiling on spend.
+MATCH_PER_IP_HOUR = _int("MATCH_PER_IP_HOUR", 5)
+MATCH_PER_DAY = _int("MATCH_PER_DAY", 300)
+MATCH_CONCURRENT = _int("MATCH_CONCURRENT", 3)        # see MatchGate in api/main.py before raising
+
 # --- contact form ----------------------------------------------------------- #
 # A message is accepted only with a valid Cap token (self-hosted proof-of-work
 # CAPTCHA), then delivered to you as a Telegram message from your own bot - no

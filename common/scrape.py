@@ -52,7 +52,9 @@ def _to_rows(df) -> list[dict]:
         if not jid and not url:
             continue
         title = _clean(rec.get("title"))
-        desc = _clean(rec.get("description")) if config.KEEP_DESCRIPTIONS else None
+        raw_desc = _clean(rec.get("description"))
+        raw_desc = raw_desc if isinstance(raw_desc, str) else None
+        desc = raw_desc if config.KEEP_DESCRIPTIONS else None
         rows.append({
             "id": str(jid or url),
             "site": _clean(rec.get("site")),
@@ -69,6 +71,11 @@ def _to_rows(df) -> list[dict]:
             "pay_interval": _clean(rec.get("interval")),
             "is_tech": 1 if is_tech(title) else 0,
             "description": desc[:4000] if isinstance(desc, str) else None,
+            # Not a column: held in memory for one run so the listing can be
+            # embedded with its description even when KEEP_DESCRIPTIONS is off.
+            # Indeed sends one with every result; LinkedIn does not, since
+            # fetching it costs an extra request per listing.
+            "_embed_desc": raw_desc[:2000] if raw_desc else None,
         })
     return rows
 

@@ -107,12 +107,13 @@ services:
       # Read-write on purpose: SQLite in WAL mode must touch the -shm sidecar
       # even to read. The API opens the file with `file:...?mode=ro` instead.
       - data:/data
-    # Measured at 44 MiB serving live traffic; 112 leaves 2.5x. The 48 MiB
-    # freed here is what pays for db-replicate's raise. Ceilings now total
-    # 880 MiB dev, 976 MiB prod with cap, valkey + goatcounter - ceilings, not usage; the
+    # Idles at ~50 MiB. Resume uploads are what set this: with 10k vectors and
+    # 2 MB PDFs, 30 at once peaked near 100 MiB behind the MATCH_CONCURRENT gate
+    # (and hit the limit without it), so this was raised from 112. Ceilings now total
+    # 912 MiB dev, 1008 MiB prod with cap, valkey + goatcounter - ceilings, not usage; the
     # stack idles near 250 MiB and only the worker climbs, during a scrape.
     user: "10001:0"
-    mem_limit: 112m
+    mem_limit: 144m
     mem_reservation: 48m
     cpus: 0.75
     pids_limit: 128

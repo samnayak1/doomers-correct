@@ -17,6 +17,11 @@
 	}
 
 	handle /api/* {
+		# Caddy has no body limit by default. The largest legitimate body is a
+		# resume upload to /api/match: a 2 MB PDF as ~2.7 MB of base64 JSON.
+		request_body {
+			max_size 4MB
+		}
 		reverse_proxy api:8000 {
 			health_uri /api/health
 		}

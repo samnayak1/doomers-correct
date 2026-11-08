@@ -163,6 +163,35 @@ footer { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border
 footer a { font-weight: 600; }
 
 /* ── Phone: cards instead of a seven-column table ─────────────────────────── */
+/* ── Resume match ─────────────────────────────────────────────────────────── */
+.privacy { margin: -4px 0 14px; padding: 8px 12px; font-size: 13.5px; color: var(--ink-soft);
+  background: var(--bg); border-left: 3px solid var(--good); border-radius: 0 4px 4px 0; max-width: 760px; }
+.privacy b { color: var(--ink); }
+.match-form { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+.match-input { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.file-pick { position: relative; display: inline-flex; align-items: center; min-height: 38px;
+  padding: 7px 14px; border: 1px dashed var(--border-strong); border-radius: 4px;
+  background: var(--bg); color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-pick:hover { border-color: var(--accent); }
+.file-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.file-pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.file-pick[hidden] { display: none; }
+.linkish { font: inherit; font-size: 13px; color: var(--link); background: none;
+  border: 0; padding: 4px 0; cursor: pointer; }
+.linkish:hover { text-decoration: underline; }
+#match-text { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px;
+  resize: vertical; min-height: 140px; line-height: 1.5; }
+#match-text[hidden] { display: none; }
+.match-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.match-form .note { margin: 0; max-width: 76ch; }
+#match-results { margin-top: 16px; }
+.match-profile { margin: 0 0 10px; font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; }
+.match-profile b { color: var(--ink); }
+.match-profile .pill { margin: 0 4px 3px 0; }
+td.why { color: var(--ink-mute); font-size: 12.5px; max-width: 200px; }
+
 @media (max-width: 700px) {
   .page { padding: 16px 14px 44px; }
   .wordmark { font-size: 24px; }
@@ -177,27 +206,29 @@ footer a { font-weight: 600; }
   .contact-form input, .contact-form textarea { font-size: 16px; }
   .contact-form input { min-height: 44px; }
   .contact-actions button { min-height: 44px; flex: 1 1 100%; }
+  #match-text { font-size: 16px; }
+  .match-row { flex-direction: column; align-items: stretch; }
 
   /* Scoped to the listings table: it becomes a stack of cards below, so it no
      longer needs to scroll. Other tables on the page keep their scroller -
      without this they simply overflow the viewport with no way to reach the
      right-hand columns. */
-  #panel-listings .table-scroll { overflow-x: visible; border: 0; background: transparent; }
+  #panel-listings .table-scroll, #match-results .table-scroll { overflow-x: visible; border: 0; background: transparent; }
   #panel-runs .table-scroll { -webkit-overflow-scrolling: touch; }
   #runs { min-width: 560px; }
-  #jobs, #jobs tbody, #jobs tr, #jobs td { display: block; width: 100%; }
-  #jobs thead { display: none; }
-  #jobs tr { background: var(--bg); border: 1px solid var(--panel-edge);
+  :is(#jobs, #match-jobs), :is(#jobs, #match-jobs) tbody, :is(#jobs, #match-jobs) tr, :is(#jobs, #match-jobs) td { display: block; width: 100%; }
+  :is(#jobs, #match-jobs) thead { display: none; }
+  :is(#jobs, #match-jobs) tr { background: var(--bg); border: 1px solid var(--panel-edge);
     border-radius: 4px; padding: 11px 13px; margin-bottom: 9px; }
-  #jobs tr:hover { background: var(--bg); }
-  #jobs td { border: 0; padding: 3px 0; max-width: none; }
-  #jobs td.title { font-size: 15px; margin-bottom: 5px; }
-  #jobs td[data-l]:not(.title):not(.actions)::before {
+  :is(#jobs, #match-jobs) tr:hover { background: var(--bg); }
+  :is(#jobs, #match-jobs) td { border: 0; padding: 3px 0; max-width: none; }
+  :is(#jobs, #match-jobs) td.title { font-size: 15px; margin-bottom: 5px; }
+  :is(#jobs, #match-jobs) td[data-l]:not(.title):not(.actions)::before {
     content: attr(data-l); display: inline-block; min-width: 76px;
     color: var(--ink-mute); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
   }
-  #jobs td.actions { margin-top: 7px; display: flex; gap: 12px; align-items: center; }
-  #jobs td.actions:empty { display: none; }
+  :is(#jobs, #match-jobs) td.actions { margin-top: 7px; display: flex; gap: 12px; align-items: center; }
+  :is(#jobs, #match-jobs) td.actions:empty { display: none; }
   .pager { justify-content: stretch; }
   .pager button { flex: 1 1 0; min-height: 44px; }
 
@@ -206,10 +237,10 @@ footer a { font-weight: 600; }
      table cell. Give it real height without turning it into a full-width
      block, and match the controls to the same floor. */
   select, input[type="search"] { min-height: 44px; }
-  #jobs td.actions { gap: 16px; min-height: 44px; }
-  #jobs td.actions a {
+  :is(#jobs, #match-jobs) td.actions { gap: 16px; min-height: 44px; }
+  :is(#jobs, #match-jobs) td.actions a {
     display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px;
     font-weight: 600;
   }
-  #jobs td.actions .pill { padding: 6px 10px; }
+  :is(#jobs, #match-jobs) td.actions .pill { padding: 6px 10px; }
 }

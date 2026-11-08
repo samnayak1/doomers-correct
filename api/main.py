@@ -18,10 +18,47 @@ from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel, Field
 
-from common import config, contact, db, service
+from common import config, contact, db, match, service
 
 app = FastAPI(title="Are doomers correct?", docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+
+class MatchGate:
+    """Refuse resume uploads beyond MATCH_CONCURRENT before reading their bodies.
+
+    Each upload briefly holds ~12 MB of copies of the same document, and an OOM
+    kill takes the chart down too. This has to be middleware: FastAPI parses the
+    whole JSON body before a handler runs, so a check in the handler still pays
+    for every refused body - and anyone can send those, captcha or not. Refused
+    rather than queued, since a waiting upload keeps its memory. The event loop
+    is single-threaded and nothing awaits between the check and the increment,
+    so a plain counter is safe.
+    """
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+        self.busy = 0
+
+    async def __call__(self, scope, receive, send) -> None:
+        if not (scope["type"] == "http" and scope["method"] == "POST"
+                and scope["path"] == "/api/match"):
+            await self.inner(scope, receive, send)
+            return
+        if self.busy >= max(1, config.MATCH_CONCURRENT):
+            refused = JSONResponse(
+                {"detail": "Resume matching is busy right now. Please try again in a minute."},
+                status_code=503)
+            await refused(scope, receive, send)
+            return
+        self.busy += 1
+        try:
+            await self.inner(scope, receive, send)
+        finally:
+            self.busy -= 1
+
+
+app.add_middleware(MatchGate)
 
 STARTED = datetime.now(timezone.utc)
 
@@ -136,15 +173,51 @@ def contact_config():
     return {"enabled": contact.enabled(), "endpoint": contact.widget_endpoint()}
 
 
-@app.post("/api/contact")
-def contact_send(body: ContactIn, request: Request):
+def client_ip(request: Request) -> str:
     # Caddy and nginx both append the real client to X-Forwarded-For, so the
     # last entry is the one a visitor cannot forge. The API is never exposed
     # directly - only through the proxy - which is what makes that safe.
     fwd = request.headers.get("x-forwarded-for", "")
-    ip = fwd.split(",")[-1].strip() if fwd else (request.client.host if request.client else "?")
+    return fwd.split(",")[-1].strip() if fwd else (request.client.host if request.client else "?")
+
+
+@app.post("/api/contact")
+def contact_send(body: ContactIn, request: Request):
+    ip = client_ip(request)
     try:
         contact.submit(body.name, body.email, body.message, body.token, ip)
     except contact.ContactError as exc:
         raise HTTPException(exc.status, str(exc))
     return {"ok": True}
+
+
+class MatchIn(BaseModel):
+    # base64 of at most MATCH_MAX_PDF_BYTES is ~4/3 of it; the exact byte limit
+    # is checked after decoding, this only stops an absurd body early.
+    pdf: str = Field("", max_length=int(config.MATCH_MAX_PDF_BYTES * 1.4) + 16)
+    text: str = Field("", max_length=40000)
+    remote: str = Field("", max_length=8)
+    token: str = Field(..., max_length=2000)
+    country: str = Field(config.DEFAULT_COUNTRY, max_length=24)
+
+
+@app.get("/api/match")
+def match_config():
+    return {"enabled": match.enabled(), "endpoint": contact.widget_endpoint_any(),
+            "max_pdf_bytes": config.MATCH_MAX_PDF_BYTES,
+            "window_days": config.MATCH_WINDOW_DAYS}
+
+
+@app.post("/api/match")
+def match_resume(body: MatchIn, request: Request):
+    country = config.country_key(body.country)
+    try:
+        with services() as svc:
+            out = match.submit(svc.job_repo.db, country, pdf_b64=body.pdf or None,
+                               text=body.text or None, remote=body.remote,
+                               token=body.token, ip=client_ip(request))
+    except match.MatchError as exc:
+        raise HTTPException(exc.status, str(exc))
+    out["currency"] = config.COUNTRIES[country]["currency"]
+    # Results are derived from a resume: never let a proxy or browser keep them.
+    return JSONResponse(out, headers={"Cache-Control": "no-store"})

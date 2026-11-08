@@ -12,11 +12,12 @@ interpolated, because an ORDER BY clause cannot be parameterised.
 from __future__ import annotations
 
 import json
-from typing import Iterator
+import struct
+from typing import Iterable, Iterator
 
 import peewee as pw
 
-from .models import Forecast, Job, Snapshot
+from .models import Forecast, Job, Meta_, Snapshot
 
 # Columns the upsert writes from a scraped row.
 JOB_COLUMNS = [
@@ -174,6 +175,26 @@ class JobRepository:
                .group_by(Job.role).order_by(pw.SQL("n").desc()).dicts()
         )
 
+    def matchable(self, country: str, since: str) -> list[tuple]:
+        """(id, title, company, location, role, is_remote) for tech listings seen on or after `since`."""
+        return list(
+            Job.select(Job.id, Job.title, Job.company, Job.location, Job.role, Job.is_remote)
+               .where((Job.country == country) & (Job.is_tech == 1)
+                      & (Job.last_seen >= since) & Job.title.is_null(False))
+               .tuples()
+        )
+
+    def by_ids(self, country: str, ids: list[str], *, since: str | None = None) -> dict[str, dict]:
+        """Listing rows keyed by id; ids not found (or seen before `since`) are absent."""
+        out: dict[str, dict] = {}
+        for chunk in pw.chunked(ids, 400):
+            where = (Job.country == country) & Job.id.in_(list(chunk))
+            if since:
+                where &= Job.last_seen >= since
+            for row in Job.select(*LIST_FIELDS).where(where).dicts():
+                out[row["id"]] = row
+        return out
+
     def count_seen_on(self, country: str, day: str) -> int:
         return Job.select().where(
             (Job.country == country) & (Job.is_tech == 1) & (Job.last_seen == day)).count()
@@ -239,3 +260,104 @@ class ForecastRepository:
     def clear(self, country: str, metric: str) -> int:
         return Forecast.delete().where(
             (Forecast.country == country) & (Forecast.metric == metric)).execute()
+
+
+class VectorRepository:
+    """Listing embeddings in a sqlite-vec `vec0` virtual table.
+
+    Raw SQL because vec0 is a virtual table Peewee has no model for. Keys are
+    "country|id" - jobs has a composite primary key and its implicit rowid is
+    not stable across VACUUM, so it cannot be the link. vec0 has no UPSERT, so
+    a replacement is a delete followed by an insert.
+
+    Every method needs the extension loaded on the connection (db.connect does
+    that whenever sqlite-vec is installed); `available()` says whether it is.
+    """
+
+    TABLE = "job_vec"
+    _DIM_KEY = "vec_dim"
+    _MODEL_KEY = "vec_model"
+
+    def __init__(self, db) -> None:
+        self.db = db
+
+    @staticmethod
+    def key(country: str, jid: str) -> str:
+        return f"{country}|{jid}"
+
+    @staticmethod
+    def split(key: str) -> tuple[str, str]:
+        country, _, jid = key.partition("|")   # country names never contain "|"
+        return country, jid
+
+    @staticmethod
+    def pack(vec: Iterable[float]) -> bytes:
+        v = list(vec)
+        return struct.pack(f"{len(v)}f", *v)
+
+    def available(self) -> bool:
+        try:
+            self.db.execute_sql("SELECT vec_version()")
+            return True
+        except Exception:
+            return False
+
+    def ready(self) -> bool:
+        """The table exists - false until the worker's first embedding pass."""
+        return bool(self.db.execute_sql(
+            "SELECT 1 FROM sqlite_master WHERE name = ?", (self.TABLE,)).fetchone())
+
+    def ensure(self, dim: int, model: str) -> bool:
+        """Create the table, rebuilding it if the model or size changed. True if (re)created."""
+        def meta(k):
+            row = Meta_.get_or_none(Meta_.k == k)
+            return row.v if row else None
+
+        same = meta(self._DIM_KEY) == str(dim) and meta(self._MODEL_KEY) == model
+        if same and self.ready():
+            return False
+        with self.db.atomic():
+            self.db.execute_sql(f"DROP TABLE IF EXISTS {self.TABLE}")
+            self.db.execute_sql(
+                f"CREATE VIRTUAL TABLE {self.TABLE} USING vec0("
+                f"job_key TEXT PRIMARY KEY, country TEXT, remote INTEGER, "
+                f"embedding float[{int(dim)}] distance_metric=cosine)")
+            Meta_.replace(k=self._DIM_KEY, v=str(dim)).execute()
+            Meta_.replace(k=self._MODEL_KEY, v=model).execute()
+        return True
+
+    def keys(self, country: str) -> set[str]:
+        return {r[0] for r in self.db.execute_sql(
+            f"SELECT job_key FROM {self.TABLE} WHERE country = ?", (country,)).fetchall()}
+
+    def delete(self, keys: Iterable[str]) -> int:
+        n = 0
+        with self.db.atomic():
+            for k in keys:
+                self.db.execute_sql(f"DELETE FROM {self.TABLE} WHERE job_key = ?", (k,))
+                n += 1
+        return n
+
+    def put(self, rows: Iterable[tuple[str, str, int, list[float]]]) -> int:
+        """rows: (key, country, remote, vector)."""
+        n = 0
+        with self.db.atomic():
+            for key, country, remote, vec in rows:
+                self.db.execute_sql(f"DELETE FROM {self.TABLE} WHERE job_key = ?", (key,))
+                self.db.execute_sql(
+                    f"INSERT INTO {self.TABLE}(job_key, country, remote, embedding) VALUES (?, ?, ?, ?)",
+                    (key, country, 1 if remote else 0, self.pack(vec)))
+                n += 1
+        return n
+
+    def nearest(self, country: str, vec: list[float], k: int,
+                remote: bool | None = None) -> list[tuple[str, float]]:
+        """(job_key, cosine distance) for the k nearest, closest first."""
+        sql = (f"SELECT job_key, distance FROM {self.TABLE} "
+               f"WHERE embedding MATCH ? AND k = ? AND country = ?")
+        params: list = [self.pack(vec), max(1, min(int(k), 4096)), country]
+        if remote is not None:
+            sql += " AND remote = ?"
+            params.append(1 if remote else 0)
+        return [(r[0], float(r[1])) for r in
+                self.db.execute_sql(sql + " ORDER BY distance", params).fetchall()]

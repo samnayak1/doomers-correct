@@ -90,6 +90,16 @@ function renderChart(d) {
 }
 
 /* ── jobs table ────────────────────────────────────────────────────────── */
+// Shared by the listings table and the resume-match results.
+const rowLead = (r) => `
+        <td class="title" data-l="Role">${esc(r.title)}</td>
+        <td class="co" data-l="Company">${esc(r.company)}</td>
+        <td class="co" data-l="Location">${esc(r.location)}</td>
+        <td data-l="Source"><span class="pill">${esc(r.site)}</span></td>
+        <td class="num" data-l="Posted">${fmtDate(r.date_posted)}</td>`;
+const rowActions = (r) => `<td class="actions">${r.is_remote ? '<span class="pill remote">Remote</span>' : ''}
+            ${r.job_url ? `<a href="${esc(r.job_url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}</td>`;
+
 function renderJobs(d) {
   state.total = d.total;
   state.currency = d.currency;
@@ -101,16 +111,9 @@ function renderJobs(d) {
       const row = { ...r, currency: d.currency };
       // data-l drives the stacked card view under 640px, where the header row
       // is hidden and each cell has to say what it is.
-      return `<tr>
-        <td class="title" data-l="Role">${esc(r.title)}</td>
-        <td class="co" data-l="Company">${esc(r.company)}</td>
-        <td class="co" data-l="Location">${esc(r.location)}</td>
-        <td data-l="Source"><span class="pill">${esc(r.site)}</span></td>
-        <td class="num" data-l="Posted">${fmtDate(r.date_posted)}</td>
+      return `<tr>${rowLead(r)}
         <td class="num" data-l="Salary">${fmtSalary(row)}</td>
-        <td class="actions">${r.is_remote ? '<span class="pill remote">Remote</span>' : ''}
-            ${r.job_url ? `<a href="${esc(r.job_url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}</td>
-      </tr>`;
+        ${rowActions(r)}</tr>`;
     }).join('');
   }
   const from = d.total ? state.offset + 1 : 0;
@@ -228,12 +231,12 @@ addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { if (lastSeries) renderChart(lastSeries); }, 150);
 });
 
-/* ── contact ───────────────────────────────────────────────────────────── */
-// Nothing here runs until someone opens the form: readers of the chart never
+/* ── captcha (shared by contact and resume match) ──────────────────────── */
+// Nothing here runs until someone opens a form: readers of the chart never
 // download the widget or start a proof-of-work they did not ask for.
 let capEndpoint = null;
-let capToken = '';
-let contactReady = null;
+let capScript = null;
+const caps = {};   // slot id -> { token }
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -245,25 +248,44 @@ function loadScript(src) {
   });
 }
 
+async function loadCap(endpoint) {
+  capEndpoint = endpoint;
+  capScript ||= loadScript('/vendor/cap.min.js');
+  await capScript;
+}
+
 // Tokens are single-use, so every attempt - sent or refused - gets a fresh widget.
-function mountCap() {
-  capToken = '';
+function mountCap(slot) {
+  const c = caps[slot] = { token: '' };
   const w = document.createElement('cap-widget');
   w.setAttribute('data-cap-api-endpoint', capEndpoint);
-  w.addEventListener('solve', (e) => { capToken = e.detail.token; });
-  w.addEventListener('reset', () => { capToken = ''; });
-  w.addEventListener('error', () => { capToken = ''; });
-  $('cap-slot').replaceChildren(w);
+  w.addEventListener('solve', (e) => { c.token = e.detail.token; });
+  w.addEventListener('reset', () => { c.token = ''; });
+  w.addEventListener('error', () => { c.token = ''; });
+  $(slot).replaceChildren(w);
 }
+
+// Solve on submit rather than making the visitor click the widget first.
+async function capToken(slot, status) {
+  const c = caps[slot];
+  if (c && !c.token) {
+    status.textContent = 'Verifying…';
+    try { await $(slot).querySelector('cap-widget').solve(); } catch { /* reported below */ }
+  }
+  if (!c || !c.token) throw new Error('Verification did not complete. Please try again.');
+  return c.token;
+}
+
+/* ── contact ───────────────────────────────────────────────────────────── */
+let contactReady = null;
 
 function prepareContact() {
   contactReady ||= (async () => {
     try {
       const cfg = await api('/api/contact');
       if (!cfg.enabled) throw new Error('not configured');
-      capEndpoint = cfg.endpoint;
-      await loadScript('/vendor/cap.min.js');
-      mountCap();
+      await loadCap(cfg.endpoint);
+      mountCap('cap-slot');
       return true;
     } catch {
       $('contact-send').disabled = true;
@@ -294,17 +316,12 @@ $('contact-form').addEventListener('submit', async (e) => {
 
   btn.disabled = true;
   try {
-    if (!capToken) {
-      // Solve on submit rather than making the visitor click the widget first.
-      status.textContent = 'Verifying…';
-      try { await $('cap-slot').querySelector('cap-widget').solve(); } catch { /* reported below */ }
-      if (!capToken) throw new Error('Verification did not complete. Please try again.');
-    }
+    const token = await capToken('cap-slot', status);
     status.textContent = 'Sending…';
     const r = await fetch('/api/contact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: val('name'), email: val('email'), message: val('message'), token: capToken }),
+      body: JSON.stringify({ name: val('name'), email: val('email'), message: val('message'), token }),
     });
     const d = await r.json().catch(() => ({}));
     // FastAPI's own validation errors arrive as a list, ours as a string.
@@ -316,7 +333,119 @@ $('contact-form').addEventListener('submit', async (e) => {
     status.textContent = err.message;
   } finally {
     btn.disabled = false;
-    mountCap();
+    mountCap('cap-slot');
+  }
+});
+
+/* ── resume match ──────────────────────────────────────────────────────── */
+// The panel stays hidden unless the server says matching is configured. The
+// widget is only fetched once someone starts using the form.
+let matchCfg = null;
+let matchReady = null;
+let pasteMode = false;
+
+async function initMatch() {
+  try {
+    matchCfg = await api('/api/match');
+    if (!matchCfg.enabled) return;
+    $('match-window').textContent = `${matchCfg.window_days} days`;
+    $('panel-match').hidden = false;
+  } catch { /* matching is optional */ }
+}
+
+function prepareMatch() {
+  matchReady ||= (async () => {
+    try {
+      await loadCap(matchCfg.endpoint);
+      mountCap('match-cap-slot');
+      return true;
+    } catch {
+      $('match-send').disabled = true;
+      $('match-status').textContent = 'Resume matching is unavailable right now.';
+      return false;
+    }
+  })();
+  return matchReady;
+}
+
+const readBase64 = (file) => new Promise((resolve, reject) => {
+  const fr = new FileReader();
+  fr.onload = () => resolve(String(fr.result).split(',', 2)[1] || '');
+  fr.onerror = () => reject(new Error('Could not read that file.'));
+  fr.readAsDataURL(file);
+});
+
+function renderMatch(d) {
+  const p = d.profile;
+  const pretty = (r) => r.replace(/_/g, ' ');
+  const yrs = p.years_experience ? ` · ~${Math.round(p.years_experience)} yrs` : '';
+  $('match-profile').innerHTML =
+    `Read as <b>${esc(p.seniority)}</b>${esc(yrs)}`
+    + (p.roles.length ? ` · <b>${p.roles.map((r) => esc(pretty(r))).join(', ')}</b>` : '')
+    + (p.skills.length ? `<br>${p.skills.map((k) => `<span class="pill">${esc(k)}</span>`).join('')}` : '');
+  const tb = $('match-jobs').querySelector('tbody');
+  tb.innerHTML = d.rows.length
+    ? d.rows.map((r) => `<tr>${rowLead(r)}
+        <td class="why" data-l="Why">${esc((r.why || []).join(', ')) || '—'}</td>
+        ${rowActions(r)}</tr>`).join('')
+    : '<tr><td colspan="7" class="empty">No recent listings matched. Try again after the next scrape.</td></tr>';
+  $('match-results').hidden = false;
+}
+
+$('match-form').addEventListener('focusin', () => { if (matchCfg?.enabled) prepareMatch(); });
+$('match-file').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  $('match-file-label').textContent = f ? f.name : 'Choose a PDF';
+  $('match-status').textContent = f && f.size > matchCfg.max_pdf_bytes
+    ? `That file is over ${Math.round(matchCfg.max_pdf_bytes / 1e6)} MB.` : '';
+});
+$('match-paste-toggle').addEventListener('click', () => {
+  pasteMode = !pasteMode;
+  $('match-text').hidden = !pasteMode;
+  $('match-file').closest('.file-pick').hidden = pasteMode;
+  $('match-paste-toggle').textContent = pasteMode ? 'or upload a PDF instead' : 'or paste the text instead';
+  if (pasteMode) $('match-text').focus();
+});
+
+$('match-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = $('match-status');
+  const btn = $('match-send');
+  const file = $('match-file').files[0];
+  const text = $('match-text').value.trim();
+  if (pasteMode ? text.length < 200 : !file) {
+    status.textContent = pasteMode ? 'Paste the whole resume (at least a few lines).' : 'Choose a PDF first.';
+    return;
+  }
+  if (!pasteMode && file.size > matchCfg.max_pdf_bytes) {
+    status.textContent = `That file is over ${Math.round(matchCfg.max_pdf_bytes / 1e6)} MB.`;
+    return;
+  }
+  if (!(await prepareMatch())) return;
+
+  btn.disabled = true;
+  try {
+    const token = await capToken('match-cap-slot', status);
+    status.textContent = 'Reading your resume…';
+    const body = { token, remote: $('match-remote').value, country: state.country };
+    if (pasteMode) body.text = text; else body.pdf = await readBase64(file);
+    const r = await fetch('/api/match', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'Could not match that resume.');
+    renderMatch(d);
+    status.textContent = `${plural(d.rows.length, 'match', 'matches')}, best first.`;
+    track('match-sent', 'Resume matched');
+  } catch (err) {
+    // fetch rejects with a TypeError when the connection drops, which is also
+    // how a busy server's refusal can arrive: it answers without reading the upload.
+    status.textContent = err instanceof TypeError
+      ? 'Resume matching is busy or unreachable right now. Please try again in a minute.'
+      : err.message;
+  } finally {
+    btn.disabled = false;
+    mountCap('match-cap-slot');
   }
 });
 
@@ -345,5 +474,6 @@ async function loadAnalytics() {
     $('country').innerHTML = '<option value="india">India</option>';
   }
   reloadAll();
+  initMatch();
   loadAnalytics();
 })();

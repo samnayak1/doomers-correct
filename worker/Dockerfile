@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
  && find "$SP" -name '__pycache__' -type d -prune -exec rm -rf {} + \
  && find "$SP" -name 'tests' -type d -prune -exec rm -rf {} + \
     # Fail the build loudly here rather than at midnight in production.
- && python -c "import jobspy, tls_client, pandas, numpy, scipy, statsmodels, boto3; from statsmodels.tsa.arima.model import ARIMA; print('import check OK')"
+ && python -c "import jobspy, tls_client, pandas, numpy, scipy, statsmodels, boto3; from statsmodels.tsa.arima.model import ARIMA; import sqlite3, sqlite_vec; c = sqlite3.connect(':memory:'); c.enable_load_extension(True); sqlite_vec.load(c); print('import check OK, sqlite-vec', c.execute('select vec_version()').fetchone()[0])"
 
 COPY common/ /app/common/
 COPY scripts/ /app/scripts/

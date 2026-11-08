@@ -2,3 +2,6 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 boto3==1.35.92
 peewee==4.5.1
+# Vector search for resume matching, loaded into SQLite as an extension.
+# glibc wheels only - no musllinux build - which is why the API is on -slim.
+sqlite-vec==0.1.9

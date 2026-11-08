@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timezone
 
-from . import classify, config, db, s3store, service
+from . import classify, config, db, match, s3store, service
 
 
 def log(msg: str) -> None:
@@ -33,6 +33,7 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
     total_rows = 0
     new_total = 0
     by_site: dict[str, int] = {}
+    descs: dict[str, str] = {}   # tech listing id -> description, for embedding only
     ok = True
     note = ""
 
@@ -43,6 +44,8 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
             new_total += new
             total_rows += seen
             by_site[site] = by_site.get(site, 0) + seen
+            descs.update((r["id"], r["_embed_desc"]) for r in rows
+                         if r.get("is_tech") and r.get("_embed_desc"))
     except Exception as exc:
         ok = False
         note = f"{type(exc).__name__}: {exc}"
@@ -91,6 +94,10 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
             log(f"[classify] {country}: labelled {wrote}/{len(pending)}"
                 + (" - more pending, will continue next run" if remaining else " - all caught up"))
 
+    # After classification, so a listing's category is part of what is embedded.
+    match.index(conn, country, run_day, descs, log=log)
+    descs.clear()
+
     svc.forecasts.refresh(country, log=log)
     # Off by default: Litestream already has the file. Only the standalone
     # path, without the db-replicate sidecar, turns this on.
@@ -122,9 +129,18 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Scrape job boards and update the dataset.")
     ap.add_argument("--country", default="all", help="india | all")
     ap.add_argument("--forecast-only", action="store_true", help="re-fit models without scraping")
+    ap.add_argument("--embed-only", action="store_true",
+                    help="embed listings for resume matching without scraping (title-only: "
+                         "descriptions are not stored, so only a scrape can supply them)")
     a = ap.parse_args()
 
-    if a.forecast_only:
+    if a.embed_only:
+        conn = db.connect(config.DB_PATH)
+        for c in (config.COUNTRIES if a.country == "all" else [config.country_key(a.country)]):
+            match.index(conn, c, date.today(), {}, log=log)
+        conn.close()
+        out = {"embedded": True}
+    elif a.forecast_only:
         conn = db.connect(config.DB_PATH)
         out = {c: bool(refresh_forecast(conn, c)) for c in
                (config.COUNTRIES if a.country == "all" else [config.country_key(a.country)])}

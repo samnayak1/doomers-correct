@@ -19,6 +19,22 @@ from .models import ALL_MODELS, Meta_, database
 
 SCHEMA_VERSION_KEY = "schema_version"
 
+
+def _vec_extension() -> str | None:
+    """Path to the sqlite-vec loadable extension, or None when not installed.
+
+    Optional on purpose: without it everything but resume matching still
+    works, and a missing or broken extension must never stop a scrape.
+    """
+    try:
+        import sqlite_vec
+        return sqlite_vec.loadable_path()
+    except Exception:
+        return None
+
+
+VEC_EXTENSION = _vec_extension()
+
 def _add_job_role(migrator, db) -> None:
     """jobs.role, set once per listing by common/classify.py."""
     from peewee import TextField
@@ -74,6 +90,10 @@ def connect(path: str | Path, read_only: bool = False) -> SqliteDatabase:
             "busy_timeout": 15000,
             "foreign_keys": 0,
         })
+    if VEC_EXTENSION:
+        # Peewee re-applies this to every connection it opens, including the
+        # per-thread ones the API makes, so vec0 tables are always readable.
+        db.load_extension(VEC_EXTENSION)
     database.initialize(db)
     db.connect(reuse_if_open=True)
     if not read_only:

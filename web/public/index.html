@@ -45,6 +45,51 @@
     <p class="note" id="model-note"></p>
   </section>
 
+  <section class="panel" id="panel-match" aria-labelledby="match-title" hidden>
+    <h2 class="panel-title" id="match-title">Match your resume</h2>
+    <p class="caption">Upload your resume to find the listings from the last <span id="match-window">few weeks</span> that fit it best.</p>
+    <p class="privacy"><b>Your resume is not stored anywhere.</b> It is read once to make the match,
+    then discarded &mdash; never saved to disk, our database, or our logs.</p>
+    <form class="match-form" id="match-form" novalidate>
+      <div class="match-input">
+        <label class="file-pick">
+          <input type="file" id="match-file" accept="application/pdf,.pdf">
+          <span id="match-file-label">Choose a PDF</span>
+        </label>
+        <button type="button" class="linkish" id="match-paste-toggle">or paste the text instead</button>
+      </div>
+      <textarea id="match-text" rows="8" maxlength="20000" hidden
+        placeholder="Paste your resume here"></textarea>
+      <div class="match-row">
+        <select id="match-remote" aria-label="Location type">
+          <option value="">Remote or on-site</option>
+          <option value="yes">Remote only</option>
+          <option value="no">On-site / hybrid only</option>
+        </select>
+        <div class="cap-slot" id="match-cap-slot"></div>
+      </div>
+      <div class="contact-actions">
+        <button type="submit" id="match-send">Find matching jobs</button>
+        <span class="contact-status" id="match-status" role="status" aria-live="polite"></span>
+      </div>
+      <p class="note">To work out your skills and level, the resume is sent to Google's Gemini API on
+      a paid plan, under which Google does not use it to train its models. Results are ranked by
+      similarity to each listing &mdash; a starting point, not a verdict.</p>
+    </form>
+    <div id="match-results" hidden>
+      <p class="match-profile" id="match-profile"></p>
+      <div class="table-scroll">
+        <table id="match-jobs">
+          <thead><tr>
+            <th>Title</th><th>Company</th><th>Location</th><th>Source</th>
+            <th>Posted</th><th>Why</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="panel-listings" aria-labelledby="listings-title">
     <h2 class="panel-title" id="listings-title">Current listings</h2>
     <p class="caption">Most recently posted first. <span id="count"></span></p>

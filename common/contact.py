@@ -39,6 +39,12 @@ def widget_endpoint() -> str | None:
     return f"/cap/{config.CAP_SITE_KEY}/" if enabled() else None
 
 
+def widget_endpoint_any() -> str | None:
+    """The widget path whenever the captcha itself is configured - resume
+    matching needs Cap but not Telegram."""
+    return f"/cap/{config.CAP_SITE_KEY}/" if captcha_enabled() else None
+
+
 def _flat(text: str) -> str:
     return " ".join(str(text or "").split())
 
@@ -59,7 +65,9 @@ class RateLimiter:
     """In-process sliding windows. Correct because the API runs one uvicorn
     worker; a second worker would need these counts somewhere shared."""
 
-    def __init__(self) -> None:
+    def __init__(self, per_ip_hour: int, per_day: int, *, busy: str, too_many: str) -> None:
+        self.per_ip_hour, self.per_day = per_ip_hour, per_day
+        self.busy, self.too_many = busy, too_many
         self._lock = threading.Lock()
         self._by_ip: dict[str, deque[float]] = {}
         self._all: deque[float] = deque()
@@ -73,13 +81,13 @@ class RateLimiter:
         now = time.time()
         with self._lock:
             self._trim(self._all, now - 86400)
-            if len(self._all) >= config.CONTACT_PER_DAY:
-                raise ContactError(429, "The contact form is busy today. Please try again tomorrow.")
+            if len(self._all) >= self.per_day:
+                raise ContactError(429, self.busy)
             q = self._by_ip.get(ip)
             if q is not None:
                 self._trim(q, now - 3600)
-                if len(q) >= config.CONTACT_PER_IP_HOUR:
-                    raise ContactError(429, "Too many messages from your connection. Please try again later.")
+                if len(q) >= self.per_ip_hour:
+                    raise ContactError(429, self.too_many)
 
     def record(self, ip: str) -> None:
         now = time.time()
@@ -93,7 +101,15 @@ class RateLimiter:
                     del self._by_ip[k]
 
 
-limiter = RateLimiter()
+limiter = RateLimiter(
+    config.CONTACT_PER_IP_HOUR, config.CONTACT_PER_DAY,
+    busy="The contact form is busy today. Please try again tomorrow.",
+    too_many="Too many messages from your connection. Please try again later.",
+)
+
+
+def captcha_enabled() -> bool:
+    return bool(config.CAP_SITE_KEY and config.CAP_SECRET)
 
 
 def verify(token: str) -> bool:
