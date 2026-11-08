@@ -83,7 +83,7 @@ function renderChart(d) {
     ? `Projection: ${fc.model}, fitted on ${plural(fc.fitted_on.points, 'observed day')} `
       + `(${fmtDate(fc.fitted_on.start)} – ${fmtDate(fc.fitted_on.end)}), extended ${plural(fc.horizon_days, 'day')} `
       + `to ${d.config.forecast_until}. Trend damping ${fc.params.damping ?? 1}. `
-      + `This is an extrapolation of the current trend, not a prediction — see the method note below.`
+      + `This is an extrapolation of the current trend, not a prediction checkout the method note below.`
     : `No forecast yet: the model needs at least ${d.config.forecast_min_points} days of collected `
       + `data (linear regression), and ${d.config.arima_min_points} days before it switches to ARIMA. `
       + `The chart begins at the first completed scrape.`;

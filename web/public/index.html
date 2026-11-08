@@ -74,7 +74,8 @@
       </div>
       <p class="note">To work out your skills and level, the resume is sent to Google's Gemini API on
       a paid plan, under which Google does not use it to train its models. Results are ranked by
-      similarity to each listing &mdash; a starting point, not a verdict.</p>
+      score = cosine similarity + 0.03 if the listing's category fits your resume, &minus; 0.06 if its
+      title is clearly too senior or too junior for you.</p>
     </form>
     <div id="match-results" hidden>
       <p class="match-profile" id="match-profile"></p>
