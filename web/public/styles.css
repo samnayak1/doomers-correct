@@ -21,6 +21,16 @@
   --series-1:      #0a84c2;   /* observed */
   --series-2:      #e8590c;   /* forecast */
   --band:          rgba(232, 89, 12, 0.15);
+  /* Role lines: the reference palette's slots 3-8, after observed and forecast.
+     Checked together with those two for colour-blind separation. Several sit
+     under 3:1 against white, which is why each line is also named in the
+     legend and in its label and tooltip on hover - colour never works alone. */
+  --role-1:        #1baf7a;   /* aqua */
+  --role-2:        #eda100;   /* yellow */
+  --role-3:        #e87ba4;   /* magenta */
+  --role-4:        #008300;   /* green */
+  --role-5:        #6250d6;   /* violet */
+  --role-6:        #e34948;   /* red */
   --surface-1:     #ffffff;   /* chart surface, read by chart.js */
   --border-strong: #b9c0c8;
   --text-primary:  #24292f;
@@ -101,6 +111,15 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 .legend i.solid  { border-top: 2px solid var(--series-1); }
 .legend i.dashed { border-top: 2px dashed var(--series-2); }
 .legend i.swatch { width: 14px; height: 12px; border-radius: 2px; background: var(--band); }
+.legend-roles { display: flex; gap: 6px 14px; flex-wrap: wrap; margin: 8px 2px 0;
+  font-size: 12.5px; color: var(--ink-soft); }
+.legend-roles[hidden] { display: none; }
+.legend-roles .lr-title { color: var(--ink-mute); }
+.legend-roles button { font: inherit; color: inherit; background: none; border: 0;
+  padding: 2px 0; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.legend-roles button i { width: 18px; border-top: 2px solid; opacity: .45; }
+.legend-roles button:hover i, .legend-roles button.on i { opacity: 1; border-top-width: 3px; }
+.legend-roles button.on { color: var(--ink); font-weight: 600; }
 .tip {
   position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
   background: var(--bg); border: 1px solid var(--border-strong);

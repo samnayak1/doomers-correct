@@ -195,6 +195,20 @@ class JobRepository:
                 out[row["id"]] = row
         return out
 
+    def count_active_by_role(self, country: str, day: str) -> dict[str, int]:
+        """Labelled tech listings active on `day`, per role.
+
+        Active means last seen on or after `day` - the same rule the chart's
+        total uses, since every listing's interval starts on or before the day
+        it was first seen. Unlabelled listings are left out rather than guessed.
+        """
+        n = pw.fn.COUNT(pw.SQL("*"))
+        return {role: count for role, count in
+                Job.select(Job.role, n)
+                   .where((Job.country == country) & (Job.is_tech == 1)
+                          & (Job.last_seen >= day) & Job.role.is_null(False))
+                   .group_by(Job.role).tuples()}
+
     def count_seen_on(self, country: str, day: str) -> int:
         return Job.select().where(
             (Job.country == country) & (Job.is_tech == 1) & (Job.last_seen == day)).count()
@@ -232,6 +246,19 @@ class SnapshotRepository:
                             .where(Snapshot.country == country)
                             .order_by(Snapshot.scrape_date.desc())
                             .limit(limit).dicts())
+
+    def set_by_role(self, country: str, scrape_date: str, counts: dict[str, int]) -> None:
+        (Snapshot.update(by_role=json.dumps(counts, separators=(",", ":"), sort_keys=True))
+                 .where((Snapshot.country == country) & (Snapshot.scrape_date == scrape_date))
+                 .execute())
+
+    def role_counts(self, country: str) -> list[tuple[str, dict]]:
+        """(scrape_date, {role: count}) for every completed run that recorded them."""
+        return [(d, json.loads(raw)) for d, raw in
+                Snapshot.select(Snapshot.scrape_date, Snapshot.by_role)
+                        .where((Snapshot.country == country) & (Snapshot.ok == 1)
+                               & Snapshot.by_role.is_null(False))
+                        .order_by(Snapshot.scrape_date).tuples()]
 
     def set_s3_key(self, country: str, scrape_date: str, key: str) -> None:
         (Snapshot.update(s3_key=key)

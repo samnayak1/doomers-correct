@@ -1,4 +1,4 @@
-import { drawChart } from '/chart.js';
+import { drawChart, highlightRole, pinRole, prettyRole } from '/chart.js';
 
 const $ = (id) => document.getElementById(id);
 const api = (path, params) => {
@@ -66,7 +66,9 @@ function renderChart(d) {
   const drawn = drawChart($('chart'), {
     history,
     forecast: d.forecast ? d.forecast.points : [],
+    roles: d.roles || [],
   }) || {};
+  renderRoleLegend(drawn.roles || []);
   $('lg-band').lastChild.textContent = drawn.bandClipped
     ? '95% interval (runs past the top — hover for the range)' : '95% interval';
   // Legend entries only for marks that are actually on the chart.
@@ -87,6 +89,46 @@ function renderChart(d) {
     : `No forecast yet: the model needs at least ${d.config.forecast_min_points} days of collected `
       + `data (linear regression), and ${d.config.arima_min_points} days before it switches to ARIMA. `
       + `The chart begins at the first completed scrape.`;
+}
+
+/* ── role legend ───────────────────────────────────────────────────────── */
+// Buttons, so the highlight works by keyboard and by tap as well as by hover.
+// A tap toggles, since a touch screen has no hover to leave.
+function renderRoleLegend(roles) {
+  const box = $('lg-roles');
+  box.hidden = roles.length === 0;
+  if (!roles.length) { box.replaceChildren(); return; }
+  const title = document.createElement('span');
+  title.className = 'lr-title';
+  title.textContent = 'By role (since role tracking began) - hover or tap:';
+  const buttons = roles.map(({ role, color }) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.role = role;
+    const key = document.createElement('i');
+    key.style.borderTopColor = color;
+    b.append(key, document.createTextNode(prettyRole(role)));
+    b.addEventListener('mouseenter', () => highlightRole($('chart'), role));
+    b.addEventListener('mouseleave', () => highlightRole($('chart'), null));
+    // Keyboard focus only: a tap focuses the button too, and highlighting on
+    // that focus made the click that follows toggle the line straight back off.
+    b.addEventListener('focus', () => { if (b.matches(':focus-visible')) highlightRole($('chart'), role); });
+    b.addEventListener('blur', () => highlightRole($('chart'), null));
+    // Click pins the line so it stays bold without hover (a tap is hover and
+    // click at once); clicking the pinned role again unpins it.
+    b.addEventListener('click', () => {
+      const pinned = $('chart')._chart?.$pinned;
+      pinRole($('chart'), pinned === role ? null : role);
+    });
+    return b;
+  });
+  box.replaceChildren(title, ...buttons);
+  // Mirror the canvas highlight back onto the legend.
+  const chart = $('chart')._chart;
+  if (chart) {
+    chart.$onHighlight = (active) => buttons.forEach((b) =>
+      b.classList.toggle('on', b.dataset.role === active));
+  }
 }
 
 /* ── jobs table ────────────────────────────────────────────────────────── */
@@ -146,9 +188,8 @@ async function loadSeries() {
     // Roles come from what has actually been labelled, so the dropdown never
     // offers a category with nothing behind it.
     const roles = d.summary.by_role || [];
-    const pretty = (r) => r.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     $('role').innerHTML = '<option value="">All roles</option>'
-      + roles.map((r) => `<option value="${esc(r.role)}">${esc(pretty(r.role))} (${nf.format(r.n)})</option>`).join('');
+      + roles.map((r) => `<option value="${esc(r.role)}">${esc(prettyRole(r.role))} (${nf.format(r.n)})</option>`).join('');
     $('role').value = state.role || '';
     $('role').hidden = roles.length === 0;
   } catch (err) {
@@ -377,7 +418,7 @@ const readBase64 = (file) => new Promise((resolve, reject) => {
 
 function renderMatch(d) {
   const p = d.profile;
-  const pretty = (r) => r.replace(/_/g, ' ');
+  const pretty = prettyRole;
   const yrs = p.years_experience ? ` · ~${Math.round(p.years_experience)} yrs` : '';
   $('match-profile').innerHTML =
     `Read as <b>${esc(p.seniority)}</b>${esc(yrs)}`

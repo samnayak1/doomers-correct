@@ -94,6 +94,11 @@ def run_country(country: str, *, run_day: date | None = None) -> dict:
             log(f"[classify] {country}: labelled {wrote}/{len(pending)}"
                 + (" - more pending, will continue next run" if remaining else " - all caught up"))
 
+    # After classification, so tonight's new listings are counted under their
+    # role. Every role is stored; config.CHART_ROLES only picks which are drawn.
+    svc.snapshot_repo.set_by_role(country, scrape_date,
+                                  svc.job_repo.count_active_by_role(country, scrape_date))
+
     # After classification, so a listing's category is part of what is embedded.
     match.index(conn, country, run_day, descs, log=log)
     descs.clear()

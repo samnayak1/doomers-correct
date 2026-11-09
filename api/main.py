@@ -120,6 +120,7 @@ def series(country: str = Query(config.DEFAULT_COUNTRY)):
             "prose": config.COUNTRIES[country]["prose"],
             "metric": "tech_active",
             "series": svc.series.daily_series(country),
+            "roles": svc.series.role_series(country),
             "forecast": svc.forecasts.get(country),
             "summary": svc.series.summary(country),
             "config": {

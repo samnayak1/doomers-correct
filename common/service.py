@@ -148,6 +148,19 @@ class SeriesService:
                 100.0 * (snap["tech_active"] - prev["tech_active"]) / prev["tech_active"], 2)
         return out
 
+    def role_series(self, country: str) -> list[dict]:
+        """One line per config.CHART_ROLES entry: [{role, points: [{date, value}]}].
+
+        Read straight from the nightly snapshots rather than reconstructed from
+        listing intervals, so these lines begin at the first run that recorded
+        them and have no back-filled history. SERIES_FROM applies as it does to
+        the total, so the lines never reach back past the start of the chart.
+        """
+        rows = [(d, c) for d, c in self.snapshots.role_counts(country)
+                if not config.SERIES_FROM or d >= config.SERIES_FROM]
+        return [{"role": r, "points": [{"date": d, "value": c.get(r, 0)} for d, c in rows]}
+                for r in config.CHART_ROLES] if rows else []
+
     def history(self, country: str, limit: int = 60) -> list[dict]:
         """Past runs - the audit trail behind the chart."""
         return self.snapshots.recent(country, limit)

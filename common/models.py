@@ -71,6 +71,7 @@ class Snapshot(BaseModel):
     tech_active = IntegerField(null=True)
     remote_active = IntegerField(null=True)
     by_site = TextField(null=True)
+    by_role = TextField(null=True)   # JSON {role: active count}, from the run that wrote it
     s3_key = TextField(null=True)
     ok = IntegerField(default=1)
     note = TextField(null=True)

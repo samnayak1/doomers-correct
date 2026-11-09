@@ -63,11 +63,22 @@ def _drop_duplicate_indexes(migrator, db) -> None:
     db.execute_sql("REINDEX")
 
 
+def _add_snapshot_by_role(migrator, db) -> None:
+    """snapshots.by_role: active listings per role, recorded by each nightly run."""
+    from peewee import TextField
+    from playhouse.migrate import migrate
+
+    existing = {row[1] for row in db.execute_sql("PRAGMA table_info(snapshots)").fetchall()}
+    if "by_role" not in existing:
+        migrate(migrator.add_column("snapshots", "by_role", TextField(null=True)))
+
+
 # Ordered, append-only. Each is (description, callable taking a migrator+db).
 # Never edit or reorder an entry that has shipped - add a new one.
 MIGRATIONS: list[tuple[str, object]] = [
     ("add jobs.role", _add_job_role),
     ("drop duplicate model-declared indexes", _drop_duplicate_indexes),
+    ("add snapshots.by_role", _add_snapshot_by_role),
 ]
 
 

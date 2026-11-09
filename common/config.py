@@ -79,7 +79,8 @@ TECH_TITLE_PATTERN = os.environ.get("TECH_TITLE_PATTERN", r"""
     android|ios\b|mobile\s*dev|web\s*dev|qa\b|test\s*automation|
     cloud|platform|infrastructure|security|cyber|network\s*engineer|
     architect|\bdba\b|database|python|java\b|javascript|typescript|golang|
-    react|node\.?js|kubernetes|\baws\b|azure|\bgcp\b
+    react|node\.?js|kubernetes|\baws\b|azure|\bgcp\b|
+    \bui\s*/?\s*ux\b|\bux\b|\bui\s+designer|product\s+designer|interaction\s+designer
 """)
 
 TECH_TITLE_EXCLUDE = os.environ.get("TECH_TITLE_EXCLUDE", r"""
@@ -144,7 +145,7 @@ ROLE_CATEGORIES = [
     "devops", "sre", "system_engineer", "security", "it_support",
     "data_engineer", "data_scientist", "aiml",
     "embedded_engineer", "firmware_engineer", "electronics_engineer",
-    "game_developer", "qa", "forward_deployed_engineer", "architect",
+    "game_developer", "qa", "forward_deployed_engineer", "architect", "ui_ux",
     "product_management", "sales_engineer", "other",
 ]
 
@@ -171,6 +172,14 @@ MATCH_TIMEOUT = _int("MATCH_TIMEOUT", 45)
 MATCH_PER_IP_HOUR = _int("MATCH_PER_IP_HOUR", 5)
 MATCH_PER_DAY = _int("MATCH_PER_DAY", 300)
 MATCH_CONCURRENT = _int("MATCH_CONCURRENT", 3)        # see MatchGate in api/main.py before raising
+
+# Roles drawn as faint lines on the chart, one colour each, in this order. Six
+# because the chart has six categorical colours left after observed (blue) and
+# forecast (orange); a seventh would need a colour that is not distinguishable.
+# Counts for every role are recorded nightly, so this can be changed any time.
+CHART_ROLES = [r.strip() for r in os.environ.get(
+    "CHART_ROLES", "backend,frontend,full_stack,aiml,data_scientist,ui_ux").split(",")
+    if r.strip() in ROLE_CATEGORIES][:6]
 
 # --- contact form ----------------------------------------------------------- #
 # A message is accepted only with a valid Cap token (self-hosted proof-of-work
