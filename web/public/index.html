@@ -92,8 +92,15 @@
     </div>
   </section>
 
-  <section class="panel" id="panel-listings" aria-labelledby="listings-title">
-    <h2 class="panel-title" id="listings-title">Current listings</h2>
+  <section class="panel" id="panel-listings" aria-label="Listings">
+    <div class="tabs" role="tablist" aria-label="Listings">
+      <button type="button" role="tab" id="tab-btn-listings" aria-controls="tab-listings"
+        aria-selected="true">Current listings</button>
+      <button type="button" role="tab" id="tab-btn-applied" aria-controls="tab-applied"
+        aria-selected="false" tabindex="-1">My applications <span class="tab-count" id="app-count"></span></button>
+    </div>
+
+    <div id="tab-listings" role="tabpanel" aria-labelledby="tab-btn-listings">
     <p class="caption">Most recently posted first. <span id="count"></span></p>
     <div class="filters">
       <input type="search" id="q" placeholder="Search title, company or city" autocomplete="off">
@@ -124,6 +131,39 @@
     <div class="pager">
       <button id="prev" type="button">Previous</button>
       <button id="next" type="button">Next</button>
+    </div>
+    </div>
+
+    <div id="tab-applied" role="tabpanel" aria-labelledby="tab-btn-applied" hidden>
+      <p class="privacy"><b>Saved only in this browser.</b> This list is never sent to our server.
+      To use it in another browser, export it here and import it there: the two lists are merged,
+      and a job on both keeps whichever copy was changed last.</p>
+      <p class="privacy warn" id="app-storage" hidden><b>This browser is blocking site storage,</b>
+      so the list will be lost when you leave. Export it before you go.</p>
+      <div class="app-bar">
+        <div class="chips" id="app-filter" role="group" aria-label="Show by status"></div>
+        <div class="app-tools">
+          <button type="button" class="tool" id="app-add-toggle" aria-expanded="false" aria-controls="app-add">Add a job</button>
+          <button type="button" class="tool" id="app-export">Export CSV</button>
+          <label class="tool">Import CSV<input type="file" id="app-import" accept=".csv,text/csv"></label>
+        </div>
+      </div>
+      <form class="app-add" id="app-add" hidden>
+        <input type="text" name="title" maxlength="300" required placeholder="Job title" aria-label="Job title">
+        <input type="text" name="company" maxlength="300" placeholder="Company" aria-label="Company">
+        <input type="url" name="url" maxlength="2000" placeholder="Link (optional)" aria-label="Link">
+        <button type="submit" class="tool primary">Add</button>
+      </form>
+      <p class="contact-status app-status" id="app-status" role="status" aria-live="polite"></p>
+      <div class="table-scroll">
+        <table id="apps">
+          <thead><tr>
+            <th>Title</th><th>Company</th><th>Status</th><th>Round</th>
+            <th>Scheduled</th><th>Applied on</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </section>
 

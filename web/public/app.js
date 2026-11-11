@@ -1,4 +1,5 @@
 import { drawChart, highlightRole, pinRole, prettyRole } from '/chart.js';
+import { initApplied, markButton } from '/applied.js';
 
 const $ = (id) => document.getElementById(id);
 const api = (path, params) => {
@@ -140,7 +141,8 @@ const rowLead = (r) => `
         <td data-l="Source"><span class="pill">${esc(r.site)}</span></td>
         <td class="num" data-l="Posted">${fmtDate(r.date_posted)}</td>`;
 const rowActions = (r) => `<td class="actions">${r.is_remote ? '<span class="pill remote">Remote</span>' : ''}
-            ${r.job_url ? `<a href="${esc(r.job_url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}</td>`;
+            ${r.job_url ? `<a href="${esc(r.job_url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}
+            ${markButton(r, state.country)}</td>`;
 
 function renderJobs(d) {
   state.total = d.total;
@@ -515,6 +517,7 @@ async function loadAnalytics() {
     $('country').innerHTML = '<option value="india">India</option>';
   }
   reloadAll();
+  initApplied({ track });
   initMatch();
   loadAnalytics();
 })();

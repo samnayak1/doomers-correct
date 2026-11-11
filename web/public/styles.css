@@ -211,6 +211,71 @@ footer a { font-weight: 600; }
 .match-profile .pill { margin: 0 4px 3px 0; }
 td.why { color: var(--ink-mute); font-size: 12.5px; max-width: 200px; }
 
+
+/* ── Tabs + My applications ───────────────────────────────────────────────── */
+.tabs { display: flex; gap: 4px; margin: -4px 0 12px; border-bottom: 1px solid var(--border); }
+.tabs [role=tab] { font: inherit; font-size: 15px; font-weight: 600; color: var(--ink-mute);
+  background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 6px 10px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+.tabs [role=tab]:first-child { padding-left: 0; }
+.tabs [role=tab]:hover { color: var(--ink-soft); }
+.tabs [role=tab][aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
+.tab-count { font-size: 11px; font-weight: 700; color: var(--bg); background: var(--accent);
+  border-radius: 9px; padding: 0 6px; line-height: 17px; }
+.tab-count:empty { display: none; }
+[role=tabpanel][hidden] { display: none; }
+.privacy.warn { border-left-color: var(--bad); }
+.privacy[hidden] { display: none; }
+
+/* Status colours: accepted/rejected reuse good/bad; the stages in between use
+   the accent and a neutral, so the two outcomes stand out. Text always
+   carries the status too. */
+.st-applied   { --st: var(--ink-soft); }
+.st-oa        { --st: #6250d6; }
+.st-interview { --st: var(--accent); }
+.st-rejected  { --st: var(--bad); }
+.st-accepted  { --st: var(--good); }
+
+.app-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px;
+  flex-wrap: wrap; margin-bottom: 10px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font: inherit; font-size: 13px; color: var(--ink-soft); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 16px; padding: 4px 11px; cursor: pointer; }
+.chip span { font-variant-numeric: tabular-nums; color: var(--ink-mute); margin-left: 2px; }
+.chip:hover { border-color: var(--border-strong); }
+.chip[aria-pressed=true] { color: var(--bg); background: var(--st, var(--ink)); border-color: var(--st, var(--ink)); }
+.chip[aria-pressed=true] span { color: inherit; opacity: .8; }
+.app-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.tool { position: relative; font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 6px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; }
+.tool:hover:not(:disabled) { border-color: var(--border-strong); }
+.tool:disabled { opacity: .45; cursor: default; }
+.tool.primary { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.tool input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.tool:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app-add { display: grid; grid-template-columns: 1.4fr 1fr 1.4fr auto; gap: 8px; margin-bottom: 10px; }
+.app-add[hidden] { display: none; }
+.app-add input { font: inherit; font-size: 14px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 6px 9px; min-height: 34px; min-width: 0; }
+.app-status { display: block; margin: 0 0 10px; min-height: 1em; }
+.app-status:empty { margin: 0; min-height: 0; }
+
+#apps td { vertical-align: middle; }
+#apps select, #apps input { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; min-height: 30px; }
+#apps select.st { border-color: var(--st); color: var(--st); font-weight: 600; min-width: 108px; }
+#apps input[type=number] { width: 4.5em; }
+#apps td.actions { white-space: nowrap; }
+#apps td.actions a { margin-right: 12px; }
+#apps td.na { color: var(--ink-mute); }
+
+.mark { font: inherit; font-size: 12px; font-weight: 600; color: var(--link); background: var(--bg);
+  border: 1px solid var(--link); border-radius: 12px; padding: 1px 9px; margin-left: 8px;
+  cursor: pointer; white-space: nowrap; }
+.mark:hover { background: var(--surface-2); }
+.mark.on { color: var(--good); border-color: var(--good); }
+
 @media (max-width: 700px) {
   .page { padding: 16px 14px 44px; }
   .wordmark { font-size: 24px; }
@@ -235,19 +300,19 @@ td.why { color: var(--ink-mute); font-size: 12.5px; max-width: 200px; }
   #panel-listings .table-scroll, #match-results .table-scroll { overflow-x: visible; border: 0; background: transparent; }
   #panel-runs .table-scroll { -webkit-overflow-scrolling: touch; }
   #runs { min-width: 560px; }
-  :is(#jobs, #match-jobs), :is(#jobs, #match-jobs) tbody, :is(#jobs, #match-jobs) tr, :is(#jobs, #match-jobs) td { display: block; width: 100%; }
-  :is(#jobs, #match-jobs) thead { display: none; }
-  :is(#jobs, #match-jobs) tr { background: var(--bg); border: 1px solid var(--panel-edge);
+  :is(#jobs, #match-jobs, #apps), :is(#jobs, #match-jobs, #apps) tbody, :is(#jobs, #match-jobs, #apps) tr, :is(#jobs, #match-jobs, #apps) td { display: block; width: 100%; }
+  :is(#jobs, #match-jobs, #apps) thead { display: none; }
+  :is(#jobs, #match-jobs, #apps) tr { background: var(--bg); border: 1px solid var(--panel-edge);
     border-radius: 4px; padding: 11px 13px; margin-bottom: 9px; }
-  :is(#jobs, #match-jobs) tr:hover { background: var(--bg); }
-  :is(#jobs, #match-jobs) td { border: 0; padding: 3px 0; max-width: none; }
-  :is(#jobs, #match-jobs) td.title { font-size: 15px; margin-bottom: 5px; }
-  :is(#jobs, #match-jobs) td[data-l]:not(.title):not(.actions)::before {
+  :is(#jobs, #match-jobs, #apps) tr:hover { background: var(--bg); }
+  :is(#jobs, #match-jobs, #apps) td { border: 0; padding: 3px 0; max-width: none; }
+  :is(#jobs, #match-jobs, #apps) td.title { font-size: 15px; margin-bottom: 5px; }
+  :is(#jobs, #match-jobs, #apps) td[data-l]:not(.title):not(.actions)::before {
     content: attr(data-l); display: inline-block; min-width: 76px;
     color: var(--ink-mute); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
   }
-  :is(#jobs, #match-jobs) td.actions { margin-top: 7px; display: flex; gap: 12px; align-items: center; }
-  :is(#jobs, #match-jobs) td.actions:empty { display: none; }
+  :is(#jobs, #match-jobs, #apps) td.actions { margin-top: 7px; display: flex; gap: 12px; align-items: center; }
+  :is(#jobs, #match-jobs, #apps) td.actions:empty { display: none; }
   .pager { justify-content: stretch; }
   .pager button { flex: 1 1 0; min-height: 44px; }
 
@@ -256,10 +321,22 @@ td.why { color: var(--ink-mute); font-size: 12.5px; max-width: 200px; }
      table cell. Give it real height without turning it into a full-width
      block, and match the controls to the same floor. */
   select, input[type="search"] { min-height: 44px; }
-  :is(#jobs, #match-jobs) td.actions { gap: 16px; min-height: 44px; }
-  :is(#jobs, #match-jobs) td.actions a {
+  :is(#jobs, #match-jobs, #apps) td.actions { gap: 16px; min-height: 44px; }
+  :is(#jobs, #match-jobs, #apps) td.actions a {
     display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px;
     font-weight: 600;
   }
-  :is(#jobs, #match-jobs) td.actions .pill { padding: 6px 10px; }
+  :is(#jobs, #match-jobs, #apps) td.actions .pill { padding: 6px 10px; }
+  /* My applications on a phone */
+  .tabs [role=tab] { font-size: 14.5px; min-height: 44px; }
+  .app-bar { flex-direction: column; align-items: stretch; }
+  .chip { min-height: 36px; }
+  .app-tools .tool { flex: 1 1 0; justify-content: center; min-height: 44px; }
+  .app-add { grid-template-columns: 1fr; }
+  .app-add input, #apps select, #apps input { font-size: 16px; min-height: 44px; }
+  #apps td.na { display: none; }
+  #apps td[data-l]:not(.title):not(.actions):not(.na) { display: flex; align-items: center; }
+  #apps td[data-l] > :is(select, input:not([type=number])) { flex: 1 1 auto; min-width: 0; max-width: 260px; }
+  #apps td.actions a { margin-right: 0; }
+  .mark { margin-left: 0; padding: 6px 12px; font-size: 13px; }
 }
