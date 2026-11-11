@@ -1,4 +1,4 @@
-import { drawChart, highlightRole, pinRole, prettyRole } from '/chart.js';
+import { drawChart, focusRole, highlightRole, prettyRole } from '/chart.js';
 import { initApplied, markButton } from '/applied.js';
 
 const $ = (id) => document.getElementById(id);
@@ -70,6 +70,8 @@ function renderChart(d) {
     roles: d.roles || [],
   }) || {};
   renderRoleLegend(drawn.roles || []);
+  // A redraw (resize, country change) keeps the focused role if it still exists.
+  setFocus(focusedRole);
   $('lg-band').lastChild.textContent = drawn.bandClipped
     ? '95% interval (runs past the top — hover for the range)' : '95% interval';
   // Legend entries only for marks that are actually on the chart.
@@ -93,15 +95,35 @@ function renderChart(d) {
 }
 
 /* ── role legend ───────────────────────────────────────────────────────── */
-// Buttons, so the highlight works by keyboard and by tap as well as by hover.
-// A tap toggles, since a touch screen has no hover to leave.
+// Buttons, so it works by keyboard and by tap as well as by hover. Hover
+// bolds a line; a click shows only that role, zoomed in to its own range.
+let focusedRole = null;
+const ROLE_HINT = 'By role (since role tracking began) - hover to highlight, click to zoom in:';
+
+function setFocus(role) {
+  const on = focusRole($('chart'), role);
+  focusedRole = on ? role : null;
+  $('panel-chart').classList.toggle('role-focus', on);
+  const box = $('lg-roles');
+  box.querySelectorAll('button[data-role]').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.role === focusedRole)));
+  const title = box.querySelector('.lr-title');
+  if (title) {
+    title.textContent = on
+      ? `Showing ${prettyRole(role)} only, zoomed to its own scale - click another role, or:`
+      : ROLE_HINT;
+  }
+  const all = box.querySelector('.lr-all');
+  if (all) all.hidden = !on;
+}
+
 function renderRoleLegend(roles) {
   const box = $('lg-roles');
   box.hidden = roles.length === 0;
   if (!roles.length) { box.replaceChildren(); return; }
   const title = document.createElement('span');
   title.className = 'lr-title';
-  title.textContent = 'By role (since role tracking began) - hover or tap:';
+  title.textContent = ROLE_HINT;
   const buttons = roles.map(({ role, color }) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -115,15 +137,20 @@ function renderRoleLegend(roles) {
     // that focus made the click that follows toggle the line straight back off.
     b.addEventListener('focus', () => { if (b.matches(':focus-visible')) highlightRole($('chart'), role); });
     b.addEventListener('blur', () => highlightRole($('chart'), null));
-    // Click pins the line so it stays bold without hover (a tap is hover and
-    // click at once); clicking the pinned role again unpins it.
+    // Click focuses that role alone; clicking it again goes back to all.
     b.addEventListener('click', () => {
-      const pinned = $('chart')._chart?.$pinned;
-      pinRole($('chart'), pinned === role ? null : role);
+      setFocus(focusedRole === role ? null : role);
+      if (focusedRole) track(`role-zoom-${role}`, 'Role zoom');
     });
     return b;
   });
-  box.replaceChildren(title, ...buttons);
+  const all = document.createElement('button');
+  all.type = 'button';
+  all.className = 'lr-all';
+  all.textContent = 'Show all';
+  all.hidden = true;
+  all.addEventListener('click', () => setFocus(null));
+  box.replaceChildren(title, ...buttons, all);
   // Mirror the canvas highlight back onto the legend.
   const chart = $('chart')._chart;
   if (chart) {

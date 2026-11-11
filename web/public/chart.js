@@ -10,6 +10,15 @@ const fmtDate = (d) => fromDay(d).toLocaleDateString('en-US',
 const token = (name) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+/** Day ticks for a zoomed-in view: a stride of 1, 2, 7 or 14 days, whichever fits. */
+function dayTicks(d0, d1, maxTicks) {
+  const step = [1, 2, 7, 14, 28].find((n) => (d1 - d0) / n <= maxTicks) || 28;
+  const out = [];
+  for (let d = Math.ceil(d0); d <= d1; d += step) out.push(d);
+  return out;
+}
+const ZOOM_DAYS = 92;   // narrower than this, the x-axis labels days, not months
+
 /** Month-start ticks, thinned so labels never collide. */
 function monthTicks(d0, d1, maxTicks) {
   const out = [];
@@ -62,13 +71,47 @@ function setHighlight(chart, role) {
  *  nothing is being pointed at - touch screens have no hover to hold it. */
 export function highlightRole(host, role) {
   const c = host._chart;
-  if (c) setHighlight(c, role ?? c.$pinned ?? null);
-}
-export function pinRole(host, role) {
-  const c = host._chart;
   if (!c) return;
-  c.$pinned = role;
-  setHighlight(c, role);
+  // While one role is focused the others are hidden; bolding one would only
+  // move the label onto a line that is not drawn.
+  setHighlight(c, c.$focus ?? role ?? c.$pinned ?? null);
+}
+
+/** Show only `role`, with both axes zoomed to its own data; null restores the
+ *  full chart. The role lines are a few hundred against a total in the
+ *  thousands and start months into an axis that runs to 2027, so at the
+ *  full-chart scale they are a flat stub along the bottom. */
+export function focusRole(host, role) {
+  const c = host._chart;
+  if (!c) return false;
+  const target = role && c.data.datasets.find((d) => d.$role === role);
+  if (role && !target) return false;
+  c.$focus = target ? role : null;
+  c.$pinned = c.$focus;
+  const { x, y } = c.options.scales;
+  const v = c.$view;
+  for (const ds of c.data.datasets) {
+    ds.hidden = target ? ds !== target : false;
+    if (ds.$role) ds.pointRadius = ds === target ? 3 : ds.data.length === 1 ? 2.5 : 0;
+  }
+  if (target) {
+    let lo = target.data[0].x;
+    let hi = target.data[target.data.length - 1].x;
+    if (hi - lo < 6) { const pad = (6 - (hi - lo)) / 2; lo -= pad; hi += pad; }   // a week at least
+    x.min = lo - 0.5; x.max = hi + 0.5;
+    // Let Chart.js pick a nice range around the data instead of from zero -
+    // the point is to see the movement.
+    y.min = undefined; y.max = undefined; y.beginAtZero = false; y.grace = '12%';
+  } else {
+    x.min = v.x0; x.max = v.x1;
+    y.min = undefined; y.max = v.yTop; y.beginAtZero = true; y.grace = 0;
+  }
+  c.$hl = undefined;             // force setHighlight to repaint
+  setHighlight(c, c.$focus);
+  // A full update: update('none') keeps each point's cached radius, so the
+  // focused line's dots would not appear.
+  c.update();
+  return !!target;
 }
 
 /** Names the bold role line at its latest point - a label, not colour alone. */
@@ -101,7 +144,7 @@ const roleLabel = {
 const endLabel = {
   id: 'endLabel',
   afterDatasetsDraw(chart, _args, opts) {
-    if (!opts || !opts.text || chart.width < 560) return;
+    if (!opts || !opts.text || chart.width < 560 || chart.$focus) return;
     const { ctx, chartArea: area } = chart;
     ctx.save();
     ctx.fillStyle = token('--text-secondary') || '#555';
@@ -215,7 +258,7 @@ export function drawChart(host, data) {
         const day = xs.getValueForPixel(evt.x);
         let best = null; let bestD = 14;   // px - bigger than the 1.25px mark
         for (const ds of chart.data.datasets) {
-          if (!ds.$role) continue;
+          if (!ds.$role || ds.hidden) continue;
           const pts = ds.data;
           let yv = null;
           if (pts.length === 1) {
@@ -254,16 +297,21 @@ export function drawChart(host, data) {
           ticks: {
             color: ink, font: { size: 11 }, maxRotation: 0, autoSkip: false,
             padding: 8,
-            callback: (v) => {
+            callback(v) {
               const dt = fromDay(v);
+              if (this.max - this.min <= ZOOM_DAYS) {
+                return dt.toLocaleDateString('en-US', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+              }
               return dt.getUTCMonth() === 0
                 ? String(dt.getUTCFullYear())
                 : dt.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
             },
           },
           afterBuildTicks: (axis) => {
-            axis.ticks = monthTicks(x0, x1, canvas.clientWidth < 560 ? 4 : 8)
-              .map((value) => ({ value }));
+            const max = canvas.clientWidth < 560 ? 4 : 8;
+            axis.ticks = (axis.max - axis.min <= ZOOM_DAYS
+              ? dayTicks(axis.min, axis.max, max)
+              : monthTicks(axis.min, axis.max, max)).map((value) => ({ value }));
           },
         },
         y: {
@@ -273,7 +321,12 @@ export function drawChart(host, data) {
           border: { display: false },
           ticks: {
             color: ink, font: { size: 11 }, padding: 8, maxTicksLimit: 8,
-            callback: (v) => (v >= 1000 ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k` : v),
+            // "1.2k" is fine at full scale; zoomed into a narrow range it would
+            // print the same label on several gridlines, so use the full number.
+            callback(v) {
+              return v >= 1000 && this.max - this.min >= 1000
+                ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k` : fmtInt(v);
+            },
           },
         },
       },
@@ -306,6 +359,7 @@ export function drawChart(host, data) {
     },
   });
 
+  host._chart.$view = { x0, x1, yTop };
   // Position the end label against the top of the band once scales exist.
   if (last) {
     const yScale = host._chart.scales.y;

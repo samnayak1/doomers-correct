@@ -120,6 +120,12 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 .legend-roles button i { width: 18px; border-top: 2px solid; opacity: .45; }
 .legend-roles button:hover i, .legend-roles button.on i { opacity: 1; border-top-width: 3px; }
 .legend-roles button.on { color: var(--ink); font-weight: 600; }
+.legend-roles button[aria-pressed=true] { color: var(--ink); font-weight: 700;
+  text-decoration: underline; text-underline-offset: 3px; }
+.legend-roles button.lr-all { color: var(--link); font-weight: 600; }
+.legend-roles button[hidden] { display: none; }
+/* Zoomed to one role: the total, forecast and band are hidden, so is their legend. */
+#panel-chart.role-focus .legend { display: none; }
 .tip {
   position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
   background: var(--bg); border: 1px solid var(--border-strong);
