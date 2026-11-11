@@ -22,6 +22,19 @@ const LABEL = Object.fromEntries(STATUSES);
 const BY_LABEL = Object.fromEntries(STATUSES.map(([k, l]) => [l.toLowerCase(), k]));
 BY_LABEL['online assessment'] = 'oa';
 const ROUNDED = new Set(['oa', 'interview']);   // statuses that carry a round + schedule
+const TERMINAL = new Set(['rejected', 'accepted']);
+
+/** The stages a job has been through, ending at `status`. Moving back to an
+ *  earlier stage (a correction) cuts the path there; leaving an outcome
+ *  (rejected/accepted) drops it, since the job was not really at that outcome. */
+function advance(stages, status) {
+  let p = stages.filter((x) => !TERMINAL.has(x));
+  const i = p.indexOf(status);
+  if (i >= 0) p = p.slice(0, i + 1); else p.push(status);
+  if (p[0] !== 'applied') p.unshift('applied');
+  return p;
+}
+const toStage = (x) => (LABEL[x] ? x : BY_LABEL[String(x).trim().toLowerCase()]);
 
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
@@ -49,11 +62,14 @@ function clean(o) {
   const sched = s(o.scheduled, 16);
   const applied = s(o.applied, 10);
   const upd = Number(o.updated);
+  // Stored as an array; a CSV carries it as "Applied > OA > Interview".
+  const raw = Array.isArray(o.stages) ? o.stages : String(o.stages ?? '').split('>');
+  const stages = advance(raw.map(toStage).filter(Boolean), status);
   return {
     key, title,
     company: s(o.company), location: s(o.location), site: s(o.site, 40), country: s(o.country, 40),
     url: /^https?:\/\//i.test(url) ? url : '',          // never a javascript: link from an import
-    status,
+    status, stages,
     round: round >= 1 && round <= 20 ? round : null,
     scheduled: /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(sched) ? sched : '',
     applied: /^\d{4}-\d{2}-\d{2}$/.test(applied) ? applied : today(),
@@ -138,6 +154,7 @@ function showTab(name, { focus = false } = {}) {
     $(`tab-${t}`).hidden = !on;
     if (on && focus) btn.focus();
   }
+  if (name === 'applied') renderFlow();
   const u = new URL(location);
   u.hash = name === 'applied' ? 'applications' : '';
   history.replaceState(null, '', u);
@@ -197,7 +214,126 @@ function renderAll() {
   $('app-storage').hidden = storageOk;
   renderFilter();
   renderTable();
+  renderFlow();
   syncMarks();
+}
+
+/* ── Sankey: where the applications went ───────────────────────────────── */
+// Nodes in display order. The last four are where each path ends: an outcome,
+// or still waiting at the stage it reached.
+const FLOW_NODES = [
+  ['applied', 'Applied'], ['oa', 'OA'], ['interview', 'Interview'],
+  ['accepted', '✓ Accepted'], ['rejected', '✕ Rejected'],
+  ['progress', 'In progress'], ['waiting', 'No reply yet'],
+];
+const FLOW_COLOR = {
+  applied: '--ink-soft', oa: '--st-oa', interview: '--accent', accepted: '--good',
+  rejected: '--st-rejected', progress: '--ink-mute', waiting: '--border-strong',
+};
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function flowData() {
+  const links = new Map();   // "a>b" -> count
+  const add = (a, b) => links.set(`${a}>${b}`, (links.get(`${a}>${b}`) || 0) + 1);
+  for (const it of items.values()) {
+    const p = it.stages;
+    for (let i = 1; i < p.length; i++) add(p[i - 1], p[i]);
+    const last = p[p.length - 1];
+    if (!TERMINAL.has(last)) add(last, last === 'applied' ? 'waiting' : 'progress');
+  }
+  return [...links].map(([k, n]) => { const [a, b] = k.split('>'); return { a, b, n }; });
+}
+
+function renderFlow() {
+  const box = $('app-flow');
+  const host = $('app-sankey');
+  const total = items.size;
+  box.hidden = total === 0;
+  if (!total || !host.clientWidth) return;     // hidden tab: drawn when shown
+
+  const links = flowData();
+  const used = new Set(['applied', ...links.flatMap((l) => [l.a, l.b])]);
+  // Columns, skipping stages nobody reached: Applied | OA | Interview | outcomes.
+  const col = { applied: 0 };
+  let c = 0;
+  if (used.has('oa')) col.oa = ++c;
+  if (used.has('interview')) col.interview = ++c;
+  c += 1;
+  for (const k of ['accepted', 'rejected', 'progress', 'waiting']) col[k] = c;
+  const ncols = c + 1;
+
+  const val = {};
+  for (const [k] of FLOW_NODES) {
+    const inn = links.filter((l) => l.b === k).reduce((s, l) => s + l.n, 0);
+    const out = links.filter((l) => l.a === k).reduce((s, l) => s + l.n, 0);
+    val[k] = k === 'applied' ? total : Math.max(inn, out);
+  }
+  const nodes = FLOW_NODES.filter(([k]) => used.has(k) && val[k] > 0);
+
+  const W = host.clientWidth - 24;      // inside the 12px padding
+  const phone = W < 560;
+  const H = phone ? 240 : 280;
+  const NW = 10;                       // node width
+  const GAP = 16;                      // between nodes in a column
+  const labelRoom = phone ? 96 : 130;  // right of the last column
+  // Room for the labels above the stage columns; on a phone the count goes on
+  // a second line there, or "Applied 20" runs into "OA 5".
+  const top = phone ? 36 : 22;
+  const colX = (i) => (ncols === 1 ? 0 : i * ((W - labelRoom - NW) / (ncols - 1)));
+  const maxInCol = Math.max(...[...Array(ncols)].map((_, i) => nodes.filter(([key]) => col[key] === i).length));
+  const k = (H - top - 6 - GAP * (maxInCol - 1)) / total;
+
+  const pos = {};
+  for (let i = 0; i < ncols; i++) {
+    // Top-aligned: with the stages and the outcomes all stacked from the top,
+    // the ribbons out of Applied leave in the same order they arrive.
+    const inCol = nodes.filter(([key]) => col[key] === i);
+    let y = top;
+    for (const [key] of inCol) {
+      pos[key] = { x: colX(i), y, h: val[key] * k, out: 0, in: 0 };
+      y += val[key] * k + GAP;
+    }
+  }
+
+  // Ribbons stack in target order out of a node and source order into one,
+  // so they do not cross more than they have to.
+  links.sort((p, q) => pos[p.a].y - pos[q.a].y || pos[p.b].y - pos[q.b].y);
+  const outs = [...links].sort((p, q) => pos[p.b].y - pos[q.b].y);
+  for (const l of outs) { l.sy = pos[l.a].y + pos[l.a].out; pos[l.a].out += l.n * k; }
+  const ins = [...links].sort((p, q) => pos[p.a].y - pos[q.a].y);
+  for (const l of ins) { l.ty = pos[l.b].y + pos[l.b].in; pos[l.b].in += l.n * k; }
+
+  const name = Object.fromEntries(FLOW_NODES);
+  const plain = (key) => name[key].replace(/^[✓✕] /, '');
+  const pct = (n) => `${Math.round((n / total) * 100)}%`;
+  const ribbons = links.map((l) => {
+    const x0 = pos[l.a].x + NW; const x1 = pos[l.b].x; const h = l.n * k;
+    const m = (x0 + x1) / 2;
+    const d = `M${x0},${l.sy}C${m},${l.sy} ${m},${l.ty} ${x1},${l.ty}`
+      + `L${x1},${l.ty + h}C${m},${l.ty + h} ${m},${l.sy + h} ${x0},${l.sy + h}Z`;
+    const tip = `${plain(l.a)} → ${plain(l.b)}: ${l.n} (${pct(l.n)} of applications)`;
+    return `<path class="flow-link" d="${d}" fill="${css(FLOW_COLOR[l.b])}" data-tip="${esc(tip)}"><title>${esc(tip)}</title></path>`;
+  }).join('');
+  const bars = nodes.map(([key]) => {
+    const p = pos[key];
+    const last = col[key] === ncols - 1;
+    const tip = `${plain(key)}: ${val[key]} (${pct(val[key])})`;
+    // Outcomes are labelled to their right; the stages above their node, where
+    // no ribbon runs. Text wears ink colours - the bar carries the hue.
+    const stacked = phone && !last;
+    const at = last ? `x="${p.x + NW + 6}" y="${p.y + p.h / 2}" dy="0.35em"`
+      : `x="${p.x}" y="${p.y - (stacked ? 21 : 7)}"`;
+    const n = stacked ? `<tspan class="fl-n" x="${p.x}" dy="1.2em">${val[key]}</tspan>`
+      : ` <tspan class="fl-n">${val[key]}</tspan>`;
+    return `<g data-tip="${esc(tip)}"><rect x="${p.x}" y="${p.y}" width="${NW}" height="${Math.max(p.h, 2)}" rx="2"
+        fill="${css(FLOW_COLOR[key])}"><title>${esc(tip)}</title></rect>
+      <text ${at}><tspan class="fl-name">${esc(name[key])}</tspan>${n}</text></g>`;
+  }).join('');
+  const summary = nodes.map(([key]) => `${plain(key)} ${val[key]}`).join(', ');
+  host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="Where your ${total} applications went: ${esc(summary)}">${ribbons}${bars}</svg>
+    <div class="tip flow-tip" aria-hidden="true"></div>`;
+  $('app-flow-note').textContent = summary + '.';
 }
 
 function say(html) {
@@ -208,7 +344,8 @@ function say(html) {
 const COLS = [
   ['title', 'Title'], ['company', 'Company'], ['status', 'Status'], ['round', 'Round'],
   ['scheduled', 'Scheduled'], ['applied', 'Applied on'], ['location', 'Location'],
-  ['site', 'Source'], ['url', 'URL'], ['country', 'Country'], ['updated', 'Updated'], ['key', 'Key'],
+  ['site', 'Source'], ['url', 'URL'], ['country', 'Country'], ['stages', 'Stages'],
+  ['updated', 'Updated'], ['key', 'Key'],
 ];
 const norm = (h) => h.toLowerCase().replace(/[^a-z]/g, '');
 const HEAD_TO_FIELD = Object.fromEntries(COLS.flatMap(([f, h]) => [[norm(h), f], [norm(f), f]]));
@@ -226,6 +363,7 @@ function toCsv() {
   for (const it of sorted()) {
     lines.push(COLS.map(([f]) => cell(
       f === 'status' ? LABEL[it.status]
+        : f === 'stages' ? it.stages.map((x) => LABEL[x]).join(' > ')
         : f === 'updated' ? (it.updated ? new Date(it.updated).toISOString() : '')
           : it[f])).join(','));
   }
@@ -300,6 +438,7 @@ function edit(key, field, value) {
   const it = items.get(key);
   if (!it) return;
   const next = { ...it, [field]: value, updated: Date.now() };
+  if (field === 'status') next.stages = advance(it.stages, value);
   if (field === 'status' && ROUNDED.has(value) && value !== it.status) {
     next.round = 1;          // a new stage starts at round 1
     next.scheduled = '';
@@ -407,6 +546,23 @@ function wire() {
     if (!file) return;
     try { await importCsv(file); } catch { say('Could not read that file.'); }
   });
+
+  // Hover tooltip on the Sankey's ribbons and nodes.
+  const sk = $('app-sankey');
+  sk.addEventListener('pointermove', (e) => {
+    const t = e.target.closest('[data-tip]');
+    const tip = sk.querySelector('.flow-tip');
+    if (!tip) return;
+    if (!t) { tip.style.opacity = 0; return; }
+    tip.textContent = t.dataset.tip;
+    const r = sk.getBoundingClientRect();
+    const x = Math.min(e.clientX - r.left + 12, r.width - tip.offsetWidth - 4);
+    tip.style.transform = `translate(${Math.max(0, x)}px, ${e.clientY - r.top + 14}px)`;
+    tip.style.opacity = 1;
+  });
+  sk.addEventListener('pointerleave', () => { const tip = sk.querySelector('.flow-tip'); if (tip) tip.style.opacity = 0; });
+  let rt = null;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(renderFlow, 150); });
 
   // Another tab of this site changed the list.
   addEventListener('storage', (e) => {
