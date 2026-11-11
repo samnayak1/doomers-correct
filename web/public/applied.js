@@ -9,10 +9,17 @@
  * Jobs are keyed so the same listing lines up across browsers: scraped
  * listings by country + listing id, hand-added ones by their URL (or a random
  * key when they have none).
+ *
+ * Each job holds the STAGES it went through - Applied, OA 1, Interview 1,
+ * Interview 2, Rejected - each with an optional date and note. Its status,
+ * round and scheduled date are read off the last stage, so the table's
+ * columns and the timeline in the expanded row can never disagree. Rounds are
+ * not stored: "Interview 2" is simply the second interview stage.
  */
 
 const STORE = 'doomers:applications:v1';
 const MAX_ITEMS = 5000;
+const MAX_STAGES = 30;
 
 export const STATUSES = [
   ['applied', 'Applied'], ['oa', 'OA'], ['interview', 'Interview'],
@@ -20,33 +27,83 @@ export const STATUSES = [
 ];
 const LABEL = Object.fromEntries(STATUSES);
 const BY_LABEL = Object.fromEntries(STATUSES.map(([k, l]) => [l.toLowerCase(), k]));
-BY_LABEL['online assessment'] = 'oa';
-const ROUNDED = new Set(['oa', 'interview']);   // statuses that carry a round + schedule
+Object.assign(BY_LABEL, { 'online assessment': 'oa', int: 'interview', offer: 'accepted' });
+const ROUNDED = new Set(['oa', 'interview']);   // stages that come in numbered rounds
 const TERMINAL = new Set(['rejected', 'accepted']);
-
-/** The stages a job has been through, ending at `status`. Moving back to an
- *  earlier stage (a correction) cuts the path there; leaving an outcome
- *  (rejected/accepted) drops it, since the job was not really at that outcome. */
-function advance(stages, status) {
-  let p = stages.filter((x) => !TERMINAL.has(x));
-  const i = p.indexOf(status);
-  if (i >= 0) p = p.slice(0, i + 1); else p.push(status);
-  if (p[0] !== 'applied') p.unshift('applied');
-  return p;
-}
-const toStage = (x) => (LABEL[x] ? x : BY_LABEL[String(x).trim().toLowerCase()]);
+const DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/;
 
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => new Date().toLocaleDateString('en-CA');   // YYYY-MM-DD, local
+const toStage = (x) => (LABEL[x] ? x : BY_LABEL[String(x ?? '').trim().toLowerCase()]);
 
 let items = new Map();     // key -> item
 let storageOk = true;
 let filter = '';           // '' = all, else a status
 let lastRemoved = null;
+const open = new Set();    // keys whose stage timeline is expanded
 const seen = new Map();    // key -> listing row, for "Mark applied" on rendered rows
 let onEvent = () => {};
+
+/* ── stages ────────────────────────────────────────────────────────────── */
+/** 1 for the first OA, 2 for the second, ... */
+const ordinal = (stages, i) => stages.slice(0, i + 1).filter((x) => x.s === stages[i].s).length;
+
+function stageName(stages, i, { short = false } = {}) {
+  const x = stages[i];
+  if (!ROUNDED.has(x.s)) return LABEL[x.s];
+  return `${short && x.s === 'interview' ? 'Int' : LABEL[x.s]} ${ordinal(stages, i)}`;
+}
+
+const cleanNote = (v) => String(v ?? '').replace(/[<>();\r\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+
+/** Stages from storage (objects), an older save (strings) or a CSV cell
+ *  ("Applied > Interview 1 (2026-11-14T15:30; System design)"). */
+function parseStages(v) {
+  const one = (x) => {
+    if (x && typeof x === 'object') return { s: toStage(x.s), date: x.date, note: x.note };
+    const m = /^([^(]*?)\s*(?:\((.*)\))?\s*$/.exec(String(x ?? '').trim());
+    if (!m) return null;
+    const s = toStage(m[1].replace(/\s*\d+$/, ''));
+    const [date = '', ...note] = (m[2] ?? '').split(';');
+    return DATE_RE.test(date.trim()) ? { s, date: date.trim(), note: note.join(' ') }
+      : { s, note: [date, ...note].join(' ') };
+  };
+  const list = Array.isArray(v) ? v : String(v ?? '').split('>').filter((x) => x.trim());
+  return list.map(one).filter((x) => x && x.s)
+    .map((x) => ({ s: x.s, date: DATE_RE.test(x.date ?? '') ? x.date : '', note: cleanNote(x.note) }));
+}
+
+/** Applied first and only first, an outcome only last. */
+function normalize(stages) {
+  const body = stages.filter((x, i) => x.s !== 'applied' && (!TERMINAL.has(x.s) || i === stages.length - 1));
+  const first = stages[0]?.s === 'applied' ? stages[0] : { s: 'applied', date: '', note: '' };
+  return [first, ...body].slice(0, MAX_STAGES);
+}
+
+const dropOutcome = (stages) => stages.filter((x) => !TERMINAL.has(x.s));
+const blank = (s) => ({ s, date: '', note: '' });
+
+/** The status dropdown. Going back to a stage already on the path cuts the
+ *  path there (a correction); a new stage or an outcome is appended. */
+function moveTo(stages, s) {
+  const p = dropOutcome(stages);
+  if (s === 'applied') return p.slice(0, 1);
+  if (TERMINAL.has(s)) return [...p, blank(s)];
+  const at = p.map((x) => x.s).lastIndexOf(s);
+  return at >= 0 ? p.slice(0, at + 1) : [...p, blank(s)];
+}
+
+/** The round box: a higher round adds that many stages, a lower one cuts back. */
+function setRound(stages, n) {
+  const p = dropOutcome(stages);
+  const t = p[p.length - 1].s;
+  if (!ROUNDED.has(t) || !(n >= 1 && n <= 20)) return stages;
+  const at = p.map((x, i) => (x.s === t ? i : -1)).filter((i) => i >= 0);
+  return n <= at.length ? p.slice(0, at[n - 1] + 1)
+    : [...p, ...Array.from({ length: n - at.length }, () => blank(t))];
+}
 
 /* ── storage ───────────────────────────────────────────────────────────── */
 function clean(o) {
@@ -55,26 +112,45 @@ function clean(o) {
   const key = s(o.key, 600);
   const title = s(o.title);
   if (!key || !title) return null;
-  const st = s(o.status, 40);
-  const status = LABEL[st] ? st : BY_LABEL[st.toLowerCase()] || 'applied';
-  const round = Number.parseInt(o.round, 10);
   const url = s(o.url, 2000);
-  const sched = s(o.scheduled, 16);
   const applied = s(o.applied, 10);
   const upd = Number(o.updated);
-  // Stored as an array; a CSV carries it as "Applied > OA > Interview".
-  const raw = Array.isArray(o.stages) ? o.stages : String(o.stages ?? '').split('>');
-  const stages = advance(raw.map(toStage).filter(Boolean), status);
+
+  let stages = normalize(parseStages(o.stages));
+  // Status / Round / Scheduled given alongside (an older save, or a CSV edited
+  // in a spreadsheet) win over the stages, the same way the table's own
+  // dropdown and round box would apply them.
+  const status = toStage(o.status);
+  if (status && stages[stages.length - 1].s !== status) stages = moveTo(stages, status);
+  const round = Number.parseInt(o.round, 10);
+  const last = () => stages[stages.length - 1];
+  if (ROUNDED.has(last().s) && round && round !== ordinal(stages, stages.length - 1)) {
+    stages = setRound(stages, round);
+  }
+  const sched = s(o.scheduled, 16);
+  if (ROUNDED.has(last().s) && !last().date && DATE_RE.test(sched)) last().date = sched;
+
+  const end = last();
+  const rounded = ROUNDED.has(end.s);
+  const appliedOn = DATE_RE.test(applied) ? applied.slice(0, 10) : today();
+  stages[0].date = appliedOn;
   return {
     key, title,
     company: s(o.company), location: s(o.location), site: s(o.site, 40), country: s(o.country, 40),
     url: /^https?:\/\//i.test(url) ? url : '',          // never a javascript: link from an import
-    status, stages,
-    round: round >= 1 && round <= 20 ? round : null,
-    scheduled: /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(sched) ? sched : '',
-    applied: /^\d{4}-\d{2}-\d{2}$/.test(applied) ? applied : today(),
+    stages,
+    status: end.s,
+    round: rounded ? ordinal(stages, stages.length - 1) : null,
+    scheduled: rounded ? end.date : '',
+    applied: appliedOn,
     updated: Number.isFinite(upd) && upd > 0 ? upd : Date.parse(o.updated) || 0,
   };
+}
+
+/** Rebuild an item from new stages; the derived fields are recomputed. */
+function withStages(it, stages, extra = {}) {
+  const { status, round, scheduled, ...rest } = it;
+  return clean({ ...rest, ...extra, stages, updated: Date.now() });
 }
 
 function load() {
@@ -95,22 +171,28 @@ function load() {
   }
 }
 
-function save({ render = true } = {}) {
+let renderTimer = null;
+/** Persist, then redraw. A field's change event fires as focus is LEAVING it
+ *  (Tab, or a click on the next field), before focus lands on the next one;
+ *  redrawing right then would destroy that target and drop focus to <body>.
+ *  `defer` waits a tick so focus has landed and renderTable can restore it. */
+function save({ defer = false } = {}) {
   try {
     localStorage.setItem(STORE, JSON.stringify({ v: 1, items: [...items.values()] }));
     storageOk = true;
   } catch {
     storageOk = false;
   }
-  if (render) renderAll();
-  else $('app-storage').hidden = storageOk;
+  clearTimeout(renderTimer);
+  if (defer) renderTimer = setTimeout(renderAll, 0);
+  else renderAll();
 }
 
 /* ── listing rows: the "Mark applied" button ───────────────────────────── */
 const listingKey = (r, country) => `j:${country}:${r.id}`;
 
 function markLabel(it) {
-  return it ? `✓ ${LABEL[it.status]}` : 'Mark applied';
+  return it ? `✓ ${stageName(it.stages, it.stages.length - 1)}` : 'Mark applied';
 }
 
 /** HTML for the button on a listing row. Remembers the row so a click can save it. */
@@ -120,7 +202,7 @@ export function markButton(r, country) {
   seen.set(key, { ...r, country });
   const it = items.get(key);
   return `<button type="button" class="mark${it ? ' on' : ''}" data-mark="${esc(key)}"
-    aria-label="${it ? `Tracked as ${LABEL[it.status]} - show in My applications` : `Mark ${esc(r.title)} as applied`}">${markLabel(it)}</button>`;
+    aria-label="${it ? `Tracked as ${LABEL[it.status]} - show in My applications` : `Mark ${esc(r.title)} as applied`}">${esc(markLabel(it))}</button>`;
 }
 
 function syncMarks() {
@@ -136,7 +218,7 @@ function addFromListing(key) {
   if (!r) return;
   items.set(key, clean({
     key, title: r.title, company: r.company, location: r.location, site: r.site,
-    country: r.country, url: r.job_url, status: 'applied', applied: today(), updated: Date.now(),
+    country: r.country, url: r.job_url, applied: today(), updated: Date.now(),
   }));
   save();
   onEvent('app-mark', 'Marked applied');
@@ -160,6 +242,12 @@ function showTab(name, { focus = false } = {}) {
   history.replaceState(null, '', u);
 }
 
+/** For the jump links at the top of the page. */
+export function goToTab(name) {
+  showTab(name);
+  $('panel-listings').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 /* ── the applications table ────────────────────────────────────────────── */
 function sorted() {
   // Applied date, newest first - stable while editing, so a row does not jump
@@ -177,35 +265,77 @@ function renderFilter() {
     + STATUSES.map(([k, l]) => chip(k, l, counts[k] || 0)).join('');
 }
 
-function rowHtml(it) {
+const asLocal = (d) => (d && d.length === 10 ? `${d}T09:00` : d || '');
+
+function rowHtml(it, n) {
   const name = esc(it.title);
   const rounded = ROUNDED.has(it.status);
+  const isOpen = open.has(it.key);
   const opts = STATUSES.map(([k, l]) =>
     `<option value="${k}"${k === it.status ? ' selected' : ''}>${l}</option>`).join('');
-  return `<tr data-key="${esc(it.key)}">
-    <td class="title" data-l="Role">${name}</td>
+  const main = `<tr class="main${isOpen ? ' open' : ''}" data-key="${esc(it.key)}">
+    <td class="title" data-l="Role"><button type="button" class="exp" data-act="toggle"
+      aria-expanded="${isOpen}" aria-controls="app-det-${n}"><span class="chev" aria-hidden="true"></span>${name}</button>
+      <span class="path">${esc(it.stages.map((_, i) => stageName(it.stages, i)).join(' → '))}</span></td>
     <td class="co" data-l="Company">${esc(it.company) || '—'}</td>
     <td data-l="Status"><select class="st st-${it.status}" data-f="status" aria-label="Status of ${name}">${opts}</select></td>
     <td data-l="Round"${rounded ? '' : ' class="na"'}>${rounded
       ? `<input type="number" data-f="round" min="1" max="20" inputmode="numeric" value="${it.round ?? ''}" aria-label="Round for ${name}">`
       : '—'}</td>
     <td data-l="Scheduled"${rounded ? '' : ' class="na"'}>${rounded
-      ? `<input type="datetime-local" data-f="scheduled" value="${esc(it.scheduled.length === 10 ? `${it.scheduled}T09:00` : it.scheduled)}" aria-label="${LABEL[it.status]} date for ${name}">`
+      ? `<input type="datetime-local" data-f="scheduled" value="${esc(asLocal(it.scheduled))}" aria-label="${LABEL[it.status]} date for ${name}">`
       : '—'}</td>
     <td data-l="Applied"><input type="date" data-f="applied" value="${esc(it.applied)}" aria-label="Date applied to ${name}"></td>
     <td class="actions">${it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}
       <button type="button" class="linkish" data-act="remove" aria-label="Remove ${name}">Remove</button></td>
   </tr>`;
+
+  const st = it.stages;
+  const steps = st.map((x, i) => {
+    const sn = esc(stageName(st, i));
+    const date = i === 0
+      ? `<input type="date" data-f="applied" value="${esc(it.applied)}" aria-label="Date applied">`
+      : TERMINAL.has(x.s)
+        ? `<input type="date" data-sf="date" data-i="${i}" value="${esc(x.date.slice(0, 10))}" aria-label="${sn} date">`
+        : `<input type="datetime-local" data-sf="date" data-i="${i}" value="${esc(asLocal(x.date))}" aria-label="${sn} date">`;
+    const hint = i === 0 ? 'e.g. via referral' : x.s === 'oa' ? 'e.g. HackerRank, 90 min'
+      : x.s === 'interview' ? 'e.g. system design' : 'note';
+    return `<li class="st-${x.s}"><span class="stage-dot" aria-hidden="true"></span>
+      <span class="stage-name">${sn}</span>${date}
+      <input type="text" data-sf="note" data-i="${i}" maxlength="80" value="${esc(x.note)}" placeholder="${hint}" aria-label="${sn} note">
+      ${i > 0 ? `<button type="button" class="linkish" data-act="del-stage" data-i="${i}" aria-label="Remove stage ${sn}">Remove</button>` : ''}</li>`;
+  }).join('');
+  const next = (s) => {
+    if (!ROUNDED.has(s)) return LABEL[s];
+    return `${LABEL[s]} ${st.filter((x) => x.s === s).length + 1}`;
+  };
+  const adds = ['oa', 'interview', 'rejected', 'accepted'].map((s) =>
+    `<button type="button" class="tool st-${s}" data-add="${s}">+ ${next(s)}</button>`).join('');
+  const detail = `<tr class="detail" id="app-det-${n}" data-key="${esc(it.key)}"${isOpen ? '' : ' hidden'}>
+    <td colspan="7"><ol class="stages" aria-label="Stages of ${name}">${steps}</ol>
+      <div class="stage-add"><span>Add a stage</span>${adds}</div></td></tr>`;
+  return main + detail;
 }
 
 function renderTable() {
   const tb = $('apps').querySelector('tbody');
+  // Re-rendering replaces every input; put focus back on the same control so
+  // tabbing through a row's fields is not interrupted by each save.
+  const ctrls = () => [...tb.querySelectorAll('input, select, button')];
+  const a = document.activeElement;
+  const was = tb.contains(a) ? { i: ctrls().indexOf(a), key: a.closest('tr')?.dataset.key } : null;
+
   const rows = sorted().filter((it) => !filter || it.status === filter);
   tb.innerHTML = rows.length
     ? rows.map(rowHtml).join('')
     : `<tr><td colspan="7" class="empty">${items.size
       ? 'No jobs with this status.'
       : 'Nothing tracked yet. Press <b>Mark applied</b> on any listing above, or add a job yourself.'}</td></tr>`;
+
+  if (was) {
+    const el = ctrls()[was.i];
+    if (el && el.closest('tr')?.dataset.key === was.key) el.focus({ preventScroll: true });
+  }
 }
 
 function renderAll() {
@@ -219,10 +349,9 @@ function renderAll() {
 }
 
 /* ── Sankey: where the applications went ───────────────────────────────── */
-// Nodes in display order. The last four are where each path ends: an outcome,
-// or still waiting at the stage it reached.
-const FLOW_NODES = [
-  ['applied', 'Applied'], ['oa', 'OA'], ['interview', 'Interview'],
+// Stage nodes are "applied", "oa1", "oa2", "interview1", ...; each path ends
+// in an outcome, or in "still waiting" at the stage it reached.
+const OUTCOMES = [
   ['accepted', '✓ Accepted'], ['rejected', '✕ Rejected'],
   ['progress', 'In progress'], ['waiting', 'No reply yet'],
 ];
@@ -231,14 +360,17 @@ const FLOW_COLOR = {
   rejected: '--st-rejected', progress: '--ink-mute', waiting: '--border-strong',
 };
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const nodeId = (st, i) => (ROUNDED.has(st[i].s) ? `${st[i].s}${ordinal(st, i)}` : st[i].s);
+const nodeType = (id) => id.replace(/\d+$/, '');
+const nodeRound = (id) => Number(id.match(/\d+$/)?.[0] || 0);
 
 function flowData() {
   const links = new Map();   // "a>b" -> count
   const add = (a, b) => links.set(`${a}>${b}`, (links.get(`${a}>${b}`) || 0) + 1);
   for (const it of items.values()) {
-    const p = it.stages;
-    for (let i = 1; i < p.length; i++) add(p[i - 1], p[i]);
-    const last = p[p.length - 1];
+    const ids = it.stages.map((_, i) => nodeId(it.stages, i));
+    for (let i = 1; i < ids.length; i++) add(ids[i - 1], ids[i]);
+    const last = ids[ids.length - 1];
     if (!TERMINAL.has(last)) add(last, last === 'applied' ? 'waiting' : 'progress');
   }
   return [...links].map(([k, n]) => { const [a, b] = k.split('>'); return { a, b, n }; });
@@ -252,59 +384,93 @@ function renderFlow() {
   if (!total || !host.clientWidth) return;     // hidden tab: drawn when shown
 
   const links = flowData();
-  const used = new Set(['applied', ...links.flatMap((l) => [l.a, l.b])]);
-  // Columns, skipping stages nobody reached: Applied | OA | Interview | outcomes.
-  const col = { applied: 0 };
-  let c = 0;
-  if (used.has('oa')) col.oa = ++c;
-  if (used.has('interview')) col.interview = ++c;
-  c += 1;
-  for (const k of ['accepted', 'rejected', 'progress', 'waiting']) col[k] = c;
-  const ncols = c + 1;
+  const outcome = new Set(OUTCOMES.map(([k]) => k));
+  const stagesUsed = [...new Set(['applied', ...links.flatMap((l) => [l.a, l.b])])]
+    .filter((id) => !outcome.has(id));
 
-  const val = {};
-  for (const [k] of FLOW_NODES) {
-    const inn = links.filter((l) => l.b === k).reduce((s, l) => s + l.n, 0);
-    const out = links.filter((l) => l.a === k).reduce((s, l) => s + l.n, 0);
-    val[k] = k === 'applied' ? total : Math.max(inn, out);
+  // Column = the longest run of stages that leads to the node, so OA 1 ->
+  // Interview 1 -> Interview 2 reads left to right; every outcome shares the
+  // last column. Capped passes keep an odd cycle (one job doing OA after an
+  // interview, another before) from looping.
+  const col = { applied: 0 };
+  for (let pass = 0; pass < stagesUsed.length; pass++) {
+    let moved = false;
+    for (const l of links) {
+      if (outcome.has(l.b) || col[l.a] == null) continue;
+      if (col[l.b] == null || col[l.b] < col[l.a] + 1) { col[l.b] = col[l.a] + 1; moved = true; }
+    }
+    if (!moved) break;
   }
-  const nodes = FLOW_NODES.filter(([k]) => used.has(k) && val[k] > 0);
+  const lastCol = Math.max(...stagesUsed.map((id) => col[id] ?? 0)) + 1;
+  for (const [k] of OUTCOMES) col[k] = lastCol;
+  const ncols = lastCol + 1;
+
+  // Order within a column: OA rounds, then interview rounds, then outcomes.
+  const typeRank = { applied: 0, oa: 1, interview: 2 };
+  const ids = [
+    ...stagesUsed.sort((p, q) => col[p] - col[q] || typeRank[nodeType(p)] - typeRank[nodeType(q)]
+      || nodeRound(p) - nodeRound(q)),
+    ...OUTCOMES.map(([k]) => k),
+  ];
+  const val = {};
+  for (const id of ids) {
+    const inn = links.filter((l) => l.b === id).reduce((s, l) => s + l.n, 0);
+    const out = links.filter((l) => l.a === id).reduce((s, l) => s + l.n, 0);
+    val[id] = id === 'applied' ? total : Math.max(inn, out);
+  }
+  const nodes = ids.filter((id) => val[id] > 0);
 
   const W = host.clientWidth - 24;      // inside the 12px padding
   const phone = W < 560;
+  const spacing = (W - (phone ? 96 : 130)) / Math.max(ncols - 1, 1);
+  const short = spacing < 70;
+  // "Interview" alone when nobody had a second one; numbered once anyone did.
+  const maxRound = {};
+  for (const id of nodes) maxRound[nodeType(id)] = Math.max(maxRound[nodeType(id)] || 0, nodeRound(id));
+  const name = (id) => {
+    const o = OUTCOMES.find(([k]) => k === id);
+    if (o) return o[1];
+    const t = nodeType(id);
+    if (!ROUNDED.has(t)) return LABEL[t];
+    const base = short && t === 'interview' ? 'Int' : LABEL[t];
+    return maxRound[t] > 1 ? `${base} ${nodeRound(id)}` : base;
+  };
+  const plain = (id) => name(id).replace(/^[✓✕] /, '').replace(/^Int\b/, 'Interview');
+
   const H = phone ? 240 : 280;
   const NW = 10;                       // node width
   const GAP = 16;                      // between nodes in a column
   const labelRoom = phone ? 96 : 130;  // right of the last column
-  // Room for the labels above the stage columns; on a phone the count goes on
-  // a second line there, or "Applied 20" runs into "OA 5".
-  const top = phone ? 36 : 22;
-  const colX = (i) => (ncols === 1 ? 0 : i * ((W - labelRoom - NW) / (ncols - 1)));
-  const maxInCol = Math.max(...[...Array(ncols)].map((_, i) => nodes.filter(([key]) => col[key] === i).length));
+  // Room for the labels above the stage columns; when columns are close the
+  // count goes on a second line there, or "Applied 20" runs into "OA 5".
+  const stacked = phone || short;
+  const top = stacked ? 36 : 22;
+  // The first gap is kept wide enough for "Applied", the longest stage label;
+  // later columns ("OA", "Int 2") are narrower and share what is left.
+  const avail = W - labelRoom - NW;
+  const first = ncols > 2 ? Math.min(Math.max(avail / (ncols - 1), 62), avail / 2) : avail;
+  const colX = (i) => (i === 0 ? 0 : first + (i - 1) * (ncols > 2 ? (avail - first) / (ncols - 2) : 0));
+  const maxInCol = Math.max(...[...Array(ncols)].map((_, i) => nodes.filter((id) => col[id] === i).length));
   const k = (H - top - 6 - GAP * (maxInCol - 1)) / total;
 
   const pos = {};
   for (let i = 0; i < ncols; i++) {
     // Top-aligned: with the stages and the outcomes all stacked from the top,
     // the ribbons out of Applied leave in the same order they arrive.
-    const inCol = nodes.filter(([key]) => col[key] === i);
     let y = top;
-    for (const [key] of inCol) {
-      pos[key] = { x: colX(i), y, h: val[key] * k, out: 0, in: 0 };
-      y += val[key] * k + GAP;
+    for (const id of nodes.filter((n) => col[n] === i)) {
+      pos[id] = { x: colX(i), y, h: val[id] * k, out: 0, in: 0 };
+      y += val[id] * k + GAP;
     }
   }
 
   // Ribbons stack in target order out of a node and source order into one,
   // so they do not cross more than they have to.
-  links.sort((p, q) => pos[p.a].y - pos[q.a].y || pos[p.b].y - pos[q.b].y);
-  const outs = [...links].sort((p, q) => pos[p.b].y - pos[q.b].y);
+  const outs = [...links].sort((p, q) => pos[p.b].y - pos[q.b].y || pos[p.b].x - pos[q.b].x);
   for (const l of outs) { l.sy = pos[l.a].y + pos[l.a].out; pos[l.a].out += l.n * k; }
-  const ins = [...links].sort((p, q) => pos[p.a].y - pos[q.a].y);
+  const ins = [...links].sort((p, q) => pos[p.a].x - pos[q.a].x || pos[p.a].y - pos[q.a].y);
   for (const l of ins) { l.ty = pos[l.b].y + pos[l.b].in; pos[l.b].in += l.n * k; }
 
-  const name = Object.fromEntries(FLOW_NODES);
-  const plain = (key) => name[key].replace(/^[✓✕] /, '');
   const pct = (n) => `${Math.round((n / total) * 100)}%`;
   const ribbons = links.map((l) => {
     const x0 = pos[l.a].x + NW; const x1 = pos[l.b].x; const h = l.n * k;
@@ -312,28 +478,28 @@ function renderFlow() {
     const d = `M${x0},${l.sy}C${m},${l.sy} ${m},${l.ty} ${x1},${l.ty}`
       + `L${x1},${l.ty + h}C${m},${l.ty + h} ${m},${l.sy + h} ${x0},${l.sy + h}Z`;
     const tip = `${plain(l.a)} → ${plain(l.b)}: ${l.n} (${pct(l.n)} of applications)`;
-    return `<path class="flow-link" d="${d}" fill="${css(FLOW_COLOR[l.b])}" data-tip="${esc(tip)}"><title>${esc(tip)}</title></path>`;
+    return `<path class="flow-link" d="${d}" fill="${css(FLOW_COLOR[nodeType(l.b)])}" data-tip="${esc(tip)}"><title>${esc(tip)}</title></path>`;
   }).join('');
-  const bars = nodes.map(([key]) => {
-    const p = pos[key];
-    const last = col[key] === ncols - 1;
-    const tip = `${plain(key)}: ${val[key]} (${pct(val[key])})`;
+  const bars = nodes.map((id) => {
+    const p = pos[id];
+    const last = col[id] === ncols - 1;
+    const tip = `${plain(id)}: ${val[id]} (${pct(val[id])})`;
     // Outcomes are labelled to their right; the stages above their node, where
     // no ribbon runs. Text wears ink colours - the bar carries the hue.
-    const stacked = phone && !last;
+    const two = stacked && !last;
     const at = last ? `x="${p.x + NW + 6}" y="${p.y + p.h / 2}" dy="0.35em"`
-      : `x="${p.x}" y="${p.y - (stacked ? 21 : 7)}"`;
-    const n = stacked ? `<tspan class="fl-n" x="${p.x}" dy="1.2em">${val[key]}</tspan>`
-      : ` <tspan class="fl-n">${val[key]}</tspan>`;
+      : `x="${p.x}" y="${p.y - (two ? 21 : 7)}"`;
+    const n = two ? `<tspan class="fl-n" x="${p.x}" dy="1.2em">${val[id]}</tspan>`
+      : `<tspan class="fl-n"> · ${val[id]}</tspan>`;
     return `<g data-tip="${esc(tip)}"><rect x="${p.x}" y="${p.y}" width="${NW}" height="${Math.max(p.h, 2)}" rx="2"
-        fill="${css(FLOW_COLOR[key])}"><title>${esc(tip)}</title></rect>
-      <text ${at}><tspan class="fl-name">${esc(name[key])}</tspan>${n}</text></g>`;
+        fill="${css(FLOW_COLOR[nodeType(id)])}"><title>${esc(tip)}</title></rect>
+      <text ${at}><tspan class="fl-name">${esc(name(id))}</tspan>${n}</text></g>`;
   }).join('');
-  const summary = nodes.map(([key]) => `${plain(key)} ${val[key]}`).join(', ');
+  const summary = nodes.map((id) => `${plain(id)}: ${val[id]}`).join(', ');
   host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"
     aria-label="Where your ${total} applications went: ${esc(summary)}">${ribbons}${bars}</svg>
     <div class="tip flow-tip" aria-hidden="true"></div>`;
-  $('app-flow-note').textContent = summary + '.';
+  $('app-flow-note').textContent = `${summary}.`;
 }
 
 function say(html) {
@@ -358,14 +524,23 @@ function cell(v) {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/** "Applied > OA 1 (2026-11-10) > Interview 1 (2026-11-14T15:30; system design)" */
+function stagesCell(it) {
+  return it.stages.map((x, i) => {
+    const date = i === 0 ? '' : x.date;       // the applied date has its own column
+    const inner = x.note ? `${date}; ${x.note}` : date;
+    return stageName(it.stages, i) + (inner ? ` (${inner})` : '');
+  }).join(' > ');
+}
+
 function toCsv() {
   const lines = [COLS.map(([, h]) => h).join(',')];
   for (const it of sorted()) {
     lines.push(COLS.map(([f]) => cell(
       f === 'status' ? LABEL[it.status]
-        : f === 'stages' ? it.stages.map((x) => LABEL[x]).join(' > ')
-        : f === 'updated' ? (it.updated ? new Date(it.updated).toISOString() : '')
-          : it[f])).join(','));
+        : f === 'stages' ? stagesCell(it)
+          : f === 'updated' ? (it.updated ? new Date(it.updated).toISOString() : '')
+            : it[f])).join(','));
   }
   return `﻿${lines.join('\r\n')}\r\n`;   // BOM so Excel reads it as UTF-8
 }
@@ -434,19 +609,51 @@ async function importCsv(file) {
 }
 
 /* ── editing ───────────────────────────────────────────────────────────── */
+/** A field in the job's main row. */
 function edit(key, field, value) {
   const it = items.get(key);
   if (!it) return;
-  const next = { ...it, [field]: value, updated: Date.now() };
-  if (field === 'status') next.stages = advance(it.stages, value);
-  if (field === 'status' && ROUNDED.has(value) && value !== it.status) {
-    next.round = 1;          // a new stage starts at round 1
-    next.scheduled = '';
-  }
-  items.set(key, clean(next));
-  // Only a status change alters the row's shape; re-rendering for a round or a
-  // date would pull focus out of the field mid-edit.
-  save({ render: field === 'status' });
+  const st = it.stages.map((x) => ({ ...x }));
+  if (field === 'status') items.set(key, withStages(it, moveTo(st, value)));
+  else if (field === 'round') items.set(key, withStages(it, setRound(st, Number.parseInt(value, 10))));
+  else if (field === 'scheduled') {
+    st[st.length - 1].date = DATE_RE.test(value) ? value : '';
+    items.set(key, withStages(it, st));
+  } else if (field === 'applied') items.set(key, withStages(it, st, { applied: value }));
+  // A status change reshapes the row and is followed by an explicit refocus.
+  save({ defer: field !== 'status' });
+}
+
+/** A field of one stage in the expanded timeline. */
+function editStage(key, i, field, value) {
+  const it = items.get(key);
+  if (!it || !it.stages[i]) return;
+  const st = it.stages.map((x) => ({ ...x }));
+  st[i][field] = field === 'note' ? cleanNote(value) : DATE_RE.test(value) ? value : '';
+  items.set(key, withStages(it, st));
+  save({ defer: true });
+}
+
+function addStage(key, s) {
+  const it = items.get(key);
+  if (!it) return;
+  // A new round is always appended - that is how Interview 2 follows Interview 1.
+  // Adding anything after an outcome replaces the outcome.
+  items.set(key, withStages(it, [...dropOutcome(it.stages.map((x) => ({ ...x }))), blank(s)]));
+  save();
+  onEvent(`app-stage-${s}`, 'Added stage');
+}
+
+function removeStage(key, i) {
+  const it = items.get(key);
+  if (!it || i < 1) return;
+  items.set(key, withStages(it, it.stages.filter((_, j) => j !== i)));
+  save();
+}
+
+function focusRow(key, sel) {
+  const tb = $('apps').querySelector('tbody');
+  tb.querySelector(`tr[data-key="${CSS.escape(key)}"] ${sel}`)?.focus({ preventScroll: true });
 }
 
 function wire() {
@@ -460,8 +667,7 @@ function wire() {
     renderAll();
     showTab('applied');
     $('panel-listings').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    const row = $('apps').querySelector(`tr[data-key="${CSS.escape(key)}"]`);
-    row?.querySelector('select')?.focus({ preventScroll: true });
+    focusRow(key, 'select');
   });
 
   // Tabs, with arrow keys between them.
@@ -485,25 +691,39 @@ function wire() {
 
   const tb = $('apps').querySelector('tbody');
   tb.addEventListener('change', (e) => {
-    const f = e.target.dataset.f;
-    const key = e.target.closest('tr')?.dataset.key;
-    if (!f || !key) return;
-    edit(key, f, e.target.value);
-    if (f === 'status') {
-      onEvent(`app-status-${e.target.value}`, 'Application status');
-      const sel = tb.querySelector(`tr[data-key="${CSS.escape(key)}"] select`);
-      if (sel) sel.focus();
-      else say(`Moved to <b>${LABEL[e.target.value]}</b>.`);   // filtered out of view
+    const t = e.target;
+    const key = t.closest('tr')?.dataset.key;
+    if (!key) return;
+    if (t.dataset.sf) { editStage(key, Number(t.dataset.i), t.dataset.sf, t.value); return; }
+    if (!t.dataset.f) return;
+    edit(key, t.dataset.f, t.value);
+    if (t.dataset.f === 'status') {
+      onEvent(`app-status-${t.value}`, 'Application status');
+      if (!tb.querySelector(`tr[data-key="${CSS.escape(key)}"]`)) say(`Moved to <b>${LABEL[t.value]}</b>.`);   // filtered out
+      else focusRow(key, 'select');
     }
   });
   tb.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-act="remove"]');
+    const b = e.target.closest('[data-act], [data-add]');
     if (!b) return;
     const key = b.closest('tr').dataset.key;
-    lastRemoved = items.get(key);
-    items.delete(key);
-    save();
-    say(`Removed <b>${esc(lastRemoved.title)}</b>. <button type="button" class="linkish" id="app-undo">Undo</button>`);
+    if (b.dataset.add) {
+      addStage(key, b.dataset.add);
+      focusRow(key, `[data-add="${b.dataset.add}"]`);
+    } else if (b.dataset.act === 'toggle') {
+      if (open.has(key)) open.delete(key); else open.add(key);
+      renderTable();
+      focusRow(key, '.exp');
+    } else if (b.dataset.act === 'del-stage') {
+      removeStage(key, Number(b.dataset.i));
+      focusRow(key, '[data-add="interview"]');
+    } else if (b.dataset.act === 'remove') {
+      lastRemoved = items.get(key);
+      items.delete(key);
+      open.delete(key);
+      save();
+      say(`Removed <b>${esc(lastRemoved.title)}</b>. <button type="button" class="linkish" id="app-undo">Undo</button>`);
+    }
   });
   $('app-status').addEventListener('click', (e) => {
     if (e.target.id !== 'app-undo' || !lastRemoved) return;
@@ -526,11 +746,11 @@ function wire() {
     if (url && !/^https?:\/\//i.test(url)) { say('The link has to start with http:// or https://'); return; }
     const key = url ? `u:${url}` : `m:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const it = clean({ key, title: f.title.value, company: f.company.value, url,
-      status: 'applied', applied: today(), updated: Date.now() });
+      applied: today(), updated: Date.now() });
     if (!it) { say('Give the job a title.'); return; }
     const had = items.get(key);
     items.set(key, had
-      ? clean({ ...had, title: it.title, company: it.company || had.company, updated: Date.now() })
+      ? withStages(had, had.stages, { title: it.title, company: it.company || had.company })
       : it);
     filter = '';
     save();
@@ -563,6 +783,17 @@ function wire() {
   sk.addEventListener('pointerleave', () => { const tip = sk.querySelector('.flow-tip'); if (tip) tip.style.opacity = 0; });
   let rt = null;
   addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(renderFlow, 150); });
+
+  // Jump links at the top of the page that land on a tab.
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-tab]');
+    if (!a) return;
+    e.preventDefault();
+    goToTab(a.dataset.tab);
+  });
+  addEventListener('hashchange', () => {
+    if (location.hash === '#applications') goToTab('applied');
+  });
 
   // Another tab of this site changed the list.
   addEventListener('storage', (e) => {

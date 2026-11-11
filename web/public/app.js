@@ -420,6 +420,7 @@ async function initMatch() {
     if (!matchCfg.enabled) return;
     $('match-window').textContent = `${matchCfg.window_days} days`;
     $('panel-match').hidden = false;
+    $('jump-match').hidden = false;
   } catch { /* matching is optional */ }
 }
 
