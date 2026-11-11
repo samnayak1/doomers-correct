@@ -63,8 +63,15 @@ COUNTRIES: dict[str, dict] = {
 DEFAULT_COUNTRY = os.environ.get("DEFAULT_COUNTRY", "india")
 
 
+# No plain "software engineer": on Indeed it hit the board's ~1000-results-per-
+# search ceiling every night, so it measured the cap, not the market. The
+# stack-specific terms below each stay under the cap and together cover the
+# same ground; listings returned by several terms are stored once, by id.
 SEARCH_TERMS = [t.strip() for t in os.environ.get("SEARCH_TERMS", ",".join([
-    "software engineer", "backend developer", "frontend developer",
+    "java developer", "python developer", "react developer", "angular developer",
+    "php developer", "golang developer", "c++ developer", "mern stack developer",
+    "node.js developer", ".net developer",
+    "backend developer", "frontend developer",
     "full stack developer", "data engineer", "data scientist",
     "machine learning engineer", "devops engineer", "site reliability engineer",
     "qa automation engineer", "android developer", "ios developer",
