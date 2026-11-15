@@ -58,6 +58,11 @@ services:
           echo "inside the data volume to start fresh deliberately." >&2
           exit 1
         fi
+        # Litestream runs as root here, so the restored jobs.db (and anything
+        # beside it) came out root-owned - after the chown above. The API then
+        # could not open it and answered "dataset not built yet", and the worker
+        # could not write. Hand the volume over again now that it has content.
+        chown -R 10001:0 /data && chmod -R g+rwX /data
         echo "restore step complete"
 
   # Continuous replication. Tails the WAL and ships to S3 every sync interval.
