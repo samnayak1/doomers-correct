@@ -557,3 +557,16 @@ td.why { color: var(--ink-mute); font-size: 12.5px; max-width: 200px; }
   #match-jobs td.actions { flex-wrap: wrap; row-gap: 6px; }
 }
 .pred-limit { font-size: 12.5px; color: var(--ink-mute); }
+
+/* ── Listing rows: "Open" and "Mark applied" as their own columns ────────── */
+:is(#jobs, #match-jobs) td.link { white-space: nowrap; font-weight: 600; }
+:is(#jobs, #match-jobs) td.track { white-space: nowrap; }
+:is(#jobs, #match-jobs) td.track .mark { margin-left: 0; }
+:is(#jobs, #match-jobs) td.co .pill.remote { margin-left: 4px; }
+
+@media (max-width: 700px) {
+  /* On a card the two sit side by side on one line, as before. */
+  :is(#jobs, #match-jobs) td.actions.link, :is(#jobs, #match-jobs) td.actions.track {
+    display: inline-flex; width: auto; vertical-align: middle; margin-right: 14px; }
+  :is(#jobs, #match-jobs) td.actions:empty { display: none; }   /* no link: no gap */
+}

@@ -16,7 +16,7 @@ const api = (path, params) => {
 const state = {
   country: new URLSearchParams(location.search).get('country') || 'india',
   q: '', site: '', remote: '', role: '', sort: 'date_posted',
-  offset: 0, limit: 25, total: 0, currency: 'INR',
+  offset: 0, limit: 25, total: 0,
 };
 let lastSeries = null;
 let jobsTimer = null;
@@ -25,20 +25,6 @@ const nf = new Intl.NumberFormat('en-US');
 const plural = (n, one, many = `${one}s`) => `${nf.format(n)} ${n === 1 ? one : many}`;
 const fmtDate = (iso) => (iso ? new Date(iso + 'T00:00:00Z')
   .toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
-
-function fmtSalary(row) {
-  const { min_amount: lo, max_amount: hi, currency } = row;
-  if (!lo && !hi) return '—';
-  const sym = { INR: '₹', USD: '$' }[currency] || '';
-  const short = (n) => {
-    if (n == null) return '';
-    if (currency === 'INR' && n >= 100000) return `${(n / 100000).toFixed(n >= 1000000 ? 0 : 1)}L`;
-    if (n >= 1000) return `${Math.round(n / 1000)}k`;
-    return String(Math.round(n));
-  };
-  const body = lo && hi && Math.round(lo) !== Math.round(hi) ? `${short(lo)}–${short(hi)}` : short(hi || lo);
-  return `${sym}${body}`;
-}
 
 /* ── headline ─────────────────────────────────────────────────────────────
    Oversized numbers set inline in a sentence rather than a row of cards. */
@@ -166,28 +152,24 @@ function renderRoleLegend(roles) {
 const rowLead = (r) => `
         <td class="title" data-l="Role">${esc(r.title)}</td>
         <td class="co" data-l="Company">${esc(r.company)}</td>
-        <td class="co" data-l="Location">${esc(r.location)}</td>
+        <td class="co" data-l="Location">${esc(r.location)}${r.is_remote ? ' <span class="pill remote">Remote</span>' : ''}</td>
         <td data-l="Source"><span class="pill">${esc(r.site)}</span></td>
         <td class="num" data-l="Posted">${fmtDate(r.date_posted)}</td>`;
-const rowActions = (r) => `<td class="actions">${r.is_remote ? '<span class="pill remote">Remote</span>' : ''}
-            ${r.job_url ? `<a href="${esc(r.job_url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}
-            ${markButton(r, state.country)}</td>`;
+// Two cells: the link out to the posting, and tracking it in My applications.
+const rowActions = (r) => `<td class="actions link">${r.job_url
+    ? `<a href="${esc(r.job_url)}" target="_blank" rel="noopener noreferrer nofollow">Open&nbsp;↗</a>` : ''}</td>
+            <td class="actions track">${markButton(r, state.country)}</td>`;
 
 function renderJobs(d) {
   state.total = d.total;
-  state.currency = d.currency;
   const tbody = $('jobs').querySelector('tbody');
   if (!d.rows.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="empty">No listings match these filters.</td></tr>`;
   } else {
-    tbody.innerHTML = d.rows.map((r) => {
-      const row = { ...r, currency: d.currency };
-      // data-l drives the stacked card view under 640px, where the header row
-      // is hidden and each cell has to say what it is.
-      return `<tr>${rowLead(r)}
-        <td class="num" data-l="Salary">${fmtSalary(row)}</td>
-        ${rowActions(r)}</tr>`;
-    }).join('');
+    // data-l drives the stacked card view under 640px, where the header row
+    // is hidden and each cell has to say what it is.
+    tbody.innerHTML = d.rows.map((r) => `<tr>${rowLead(r)}
+        ${rowActions(r)}</tr>`).join('');
   }
   const from = d.total ? state.offset + 1 : 0;
   const to = Math.min(state.offset + state.limit, d.total);
@@ -466,7 +448,7 @@ function renderMatch(d) {
     ? d.rows.map((r, i) => `<tr style="--i:${i}">${rowLead(r)}
         <td class="why" data-l="Why">${esc((r.why || []).join(', ')) || '—'}</td>
         ${rowActions(r)}</tr>`).join('')
-    : '<tr><td colspan="7" class="empty">No recent listings matched. Try again after the next scrape.</td></tr>';
+    : '<tr><td colspan="8" class="empty">No recent listings matched. Try again after the next scrape.</td></tr>';
   const box = $('match-results');
   box.hidden = false;
   // Restart the animation on a second match: drop the class, force a reflow, re-add.
