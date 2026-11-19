@@ -5,3 +5,5 @@ peewee==4.5.1
 # Vector search for resume matching, loaded into SQLite as an extension.
 # glibc wheels only - no musllinux build - which is why the API is on -slim.
 sqlite-vec==0.1.9
+# Verifies Cognito ID tokens (RS256) locally against the pool's cached JWKS.
+PyJWT[crypto]==2.10.1

@@ -45,6 +45,8 @@ let lastRemoved = null;
 const open = new Set();    // keys whose stage timeline is expanded
 const seen = new Map();    // key -> listing row, for "Mark applied" on rendered rows
 let onEvent = () => {};
+let gate = () => true;      // replaced by initApplied: sign-in check for changes
+let onTab = () => {};
 
 /* ── stages ────────────────────────────────────────────────────────────── */
 /** 1 for the first OA, 2 for the second, ... */
@@ -225,7 +227,10 @@ function addFromListing(key) {
 }
 
 /* ── tabs ──────────────────────────────────────────────────────────────── */
-const TABS = ['listings', 'applied'];
+const TABS = ['listings', 'applied', 'predictions'];
+const TAB_HASH = { applied: 'applications', predictions: 'predictions' };
+const tabFromHash = (h) => (h === '#applications' ? 'applied'
+  : /^#predictions?(-\d+)?$/.test(h) && h !== '#prediction' ? 'predictions' : null);
 
 function showTab(name, { focus = false } = {}) {
   for (const t of TABS) {
@@ -237,8 +242,10 @@ function showTab(name, { focus = false } = {}) {
     if (on && focus) btn.focus();
   }
   if (name === 'applied') renderFlow();
+  onTab(name);
   const u = new URL(location);
-  u.hash = name === 'applied' ? 'applications' : '';
+  // A link to one prediction (#prediction-42, from a reminder email) keeps its hash.
+  if (!(name === 'predictions' && /^#prediction-\d+$/.test(u.hash))) u.hash = TAB_HASH[name] || '';
   history.replaceState(null, '', u);
 }
 
@@ -662,7 +669,10 @@ function wire() {
     const b = e.target.closest('button.mark[data-mark]');
     if (!b) return;
     const key = b.dataset.mark;
-    if (!items.has(key)) { addFromListing(key); return; }
+    if (!items.has(key)) {
+      if (gate('track your applications')) addFromListing(key);
+      return;
+    }
     filter = '';
     renderAll();
     showTab('applied');
@@ -694,6 +704,7 @@ function wire() {
     const t = e.target;
     const key = t.closest('tr')?.dataset.key;
     if (!key) return;
+    if (!gate('update your applications')) { renderTable(); return; }   // undo the edit on screen
     if (t.dataset.sf) { editStage(key, Number(t.dataset.i), t.dataset.sf, t.value); return; }
     if (!t.dataset.f) return;
     edit(key, t.dataset.f, t.value);
@@ -707,6 +718,7 @@ function wire() {
     const b = e.target.closest('[data-act], [data-add]');
     if (!b) return;
     const key = b.closest('tr').dataset.key;
+    if (b.dataset.act !== 'toggle' && !gate('update your applications')) return;
     if (b.dataset.add) {
       addStage(key, b.dataset.add);
       focusRow(key, `[data-add="${b.dataset.add}"]`);
@@ -734,6 +746,7 @@ function wire() {
   });
 
   $('app-add-toggle').addEventListener('click', () => {
+    if (!gate('track your applications')) return;
     const f = $('app-add');
     f.hidden = !f.hidden;
     $('app-add-toggle').setAttribute('aria-expanded', String(!f.hidden));
@@ -741,6 +754,7 @@ function wire() {
   });
   $('app-add').addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!gate('track your applications')) return;
     const f = e.target.elements;
     const url = f.url.value.trim();
     if (url && !/^https?:\/\//i.test(url)) { say('The link has to start with http:// or https://'); return; }
@@ -759,7 +773,11 @@ function wire() {
     onEvent('app-add', 'Added application');
   });
 
+  // Export is never gated: the list is the visitor's own data.
   $('app-export').addEventListener('click', exportCsv);
+  $('app-import').addEventListener('click', (e) => {
+    if (!gate('import applications')) e.preventDefault();   // before the file picker opens
+  });
   $('app-import').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     e.target.value = '';                 // so the same file can be picked again
@@ -792,7 +810,8 @@ function wire() {
     goToTab(a.dataset.tab);
   });
   addEventListener('hashchange', () => {
-    if (location.hash === '#applications') goToTab('applied');
+    const t = tabFromHash(location.hash);
+    if (t) goToTab(t);
   });
 
   // Another tab of this site changed the list.
@@ -803,10 +822,18 @@ function wire() {
   });
 }
 
-export function initApplied({ track } = {}) {
+/**
+ * `gate(reason)` returns true if the visitor may change the list (signed in),
+ * otherwise opens the sign-up modal and returns false. Viewing and exporting
+ * are never gated - the list is theirs. `onTab(name)` hears every tab switch.
+ */
+export function initApplied({ track, gate: g, onTab: t } = {}) {
   if (track) onEvent = track;
+  if (g) gate = g;
+  if (t) onTab = t;
   load();
   wire();
   renderAll();
-  if (location.hash === '#applications') showTab('applied');
+  const tab = tabFromHash(location.hash);
+  if (tab) showTab(tab);
 }

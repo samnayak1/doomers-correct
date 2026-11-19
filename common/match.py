@@ -20,16 +20,20 @@ import json
 import re
 from datetime import date, timedelta
 
-from . import config, contact, gemini
+from . import auth, config, contact, gemini
 from .contact import ContactError as MatchError
 from .repository import JobRepository, VectorRepository
 
 SENIORITY = ["intern", "entry", "mid", "senior", "lead"]
 
+# Keyed by account, over a day: matching needs a login, and a verified-email
+# account costs an abuser more than the captcha this replaced. MATCH_PER_DAY
+# stays as the ceiling across everyone, since each match is two Gemini calls.
 limiter = contact.RateLimiter(
-    config.MATCH_PER_IP_HOUR, config.MATCH_PER_DAY,
+    config.MATCH_PER_USER_DAY, config.MATCH_PER_DAY,
     busy="Resume matching has reached its daily limit. Please try again tomorrow.",
-    too_many="Too many resume matches from your connection. Please try again in an hour.",
+    too_many=f"That is {config.MATCH_PER_USER_DAY} resume matches today. Please try again tomorrow.",
+    window=86400,
 )
 
 
@@ -235,7 +239,7 @@ def rank(conn, country: str, prof: dict, *, remote: bool | None) -> list[dict]:
 
 
 def enabled() -> bool:
-    return gemini.enabled() and contact.captcha_enabled()
+    return gemini.enabled() and auth.enabled()
 
 
 def decode_pdf(b64: str) -> bytes:
@@ -251,7 +255,7 @@ def decode_pdf(b64: str) -> bytes:
 
 
 def submit(conn, country: str, *, pdf_b64: str | None, text: str | None,
-           remote: str, token: str, ip: str) -> dict:
+           remote: str, user_sub: str) -> dict:
     if not enabled():
         raise MatchError(503, "Resume matching is not configured.")
     text = (text or "").strip()
@@ -262,12 +266,10 @@ def submit(conn, country: str, *, pdf_b64: str | None, text: str | None,
         raise MatchError(400, "That is too short to match on - paste the whole resume.")
     text = text[:20000]
 
-    limiter.check(ip)
-    if not contact.verify(token):
-        raise MatchError(403, "The verification check failed. Please try again.")
-    # Counted once the captcha passes, not on success: the Gemini calls cost
-    # money whether or not they produce a match.
-    limiter.record(ip)
+    limiter.check(user_sub)
+    # Counted before the work, not on success: the Gemini calls cost money
+    # whether or not they produce a match.
+    limiter.record(user_sub)
 
     prof = profile(pdf=pdf, text=text or None)
     want_remote = {"yes": True, "no": False}.get(remote)

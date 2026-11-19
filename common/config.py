@@ -174,9 +174,8 @@ MATCH_RESULTS = _int("MATCH_RESULTS", 25)
 MATCH_CANDIDATES = _int("MATCH_CANDIDATES", 200)      # KNN pool re-ranked into MATCH_RESULTS
 MATCH_MAX_PDF_BYTES = _int("MATCH_MAX_PDF_BYTES", 2_000_000)
 MATCH_TIMEOUT = _int("MATCH_TIMEOUT", 45)
-# Each match costs two Gemini calls, so it is captcha-gated and rate-limited
-# like the contact form, with a global daily ceiling on spend.
-MATCH_PER_IP_HOUR = _int("MATCH_PER_IP_HOUR", 5)
+# Each match costs two Gemini calls, so it needs a login, is limited per
+# account (MATCH_PER_USER_DAY, below) and has a global daily ceiling on spend.
 MATCH_PER_DAY = _int("MATCH_PER_DAY", 300)
 MATCH_CONCURRENT = _int("MATCH_CONCURRENT", 3)        # see MatchGate in api/main.py before raising
 
@@ -202,6 +201,50 @@ TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org").rstrip
 CONTACT_PER_IP_HOUR = _int("CONTACT_PER_IP_HOUR", 5)
 # Ceiling across everyone, so rotating IPs cannot turn the form into a mailer.
 CONTACT_PER_DAY = _int("CONTACT_PER_DAY", 50)
+
+# --- accounts (AWS Cognito) ------------------------------------------------- #
+# Login is the Cognito Hosted UI; the API does the code exchange itself and
+# keeps the tokens in HttpOnly cookies, so page scripts never see them. Every
+# signed-in feature switches itself off unless all four values are set.
+APP_DB_PATH = Path(os.environ.get("APP_DB_PATH", str(DATA_DIR / "app.db")))
+SITE_URL = os.environ.get("SITE_URL", "http://localhost:8080").strip().rstrip("/")
+COGNITO_REGION = os.environ.get("COGNITO_REGION", AWS_REGION).strip()
+COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "").strip()
+COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "").strip()
+COGNITO_CLIENT_SECRET = os.environ.get("COGNITO_CLIENT_SECRET", "").strip()
+# The Hosted UI's domain, e.g. https://doomers.auth.ap-south-1.amazoncognito.com
+COGNITO_DOMAIN = os.environ.get("COGNITO_DOMAIN", "").strip().rstrip("/")
+if COGNITO_DOMAIN and not COGNITO_DOMAIN.startswith("http"):
+    COGNITO_DOMAIN = f"https://{COGNITO_DOMAIN}"
+# Signs the OAuth state, the anonymous voter cookie and unsubscribe links.
+# Changing it logs nobody out (sessions are Cognito tokens) but resets every
+# voter's identity and breaks unsubscribe links already sent.
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "").strip()
+COOKIE_SECURE = SITE_URL.startswith("https://")
+MATCH_PER_USER_DAY = _int("MATCH_PER_USER_DAY", 10)
+
+# --- predictions ------------------------------------------------------------ #
+PREDICTION_MIN_DAYS = _int("PREDICTION_MIN_DAYS", 7)          # earliest target: today + this
+PREDICTION_MAX_DATE = os.environ.get("PREDICTION_MAX_DATE", "2027-12-31")
+PREDICTION_MAX_CHARS = _int("PREDICTION_MAX_CHARS", 280)
+PREDICTIONS_PER_USER_DAY = _int("PREDICTIONS_PER_USER_DAY", 5)
+# A new anonymous voter identity costs one Cap solve; this caps how many one
+# connection can mint a day, so vote-stuffing needs many IPs as well.
+VOTER_ISSUE_PER_IP_DAY = _int("VOTER_ISSUE_PER_IP_DAY", 20)
+REPORTS_PER_IP_HOUR = _int("REPORTS_PER_IP_HOUR", 10)
+
+# --- reminder email (SES) --------------------------------------------------- #
+# The mailer sends nothing unless SES_FROM is set; reminders queue up in the
+# outbox meanwhile and go out (up to the late cutoff) once it is.
+SES_REGION = os.environ.get("SES_REGION", AWS_REGION).strip()
+SES_FROM = os.environ.get("SES_FROM", "").strip()            # e.g. "Are doomers correct? <reminders@yourdomain>"
+SES_CONFIGURATION_SET = os.environ.get("SES_CONFIGURATION_SET", "").strip()
+REMINDER_TIME = os.environ.get("REMINDER_TIME", "08:00")      # IST, on the target date
+REMINDER_TZ = "Asia/Kolkata"
+REMINDER_LATE_CUTOFF_DAYS = _int("REMINDER_LATE_CUTOFF_DAYS", 3)
+MAILER_POLL_SEC = _int("MAILER_POLL_SEC", 60)
+MAILER_BATCH = _int("MAILER_BATCH", 20)
+MAILER_MAX_ATTEMPTS = _int("MAILER_MAX_ATTEMPTS", 6)
 
 # --- analytics -------------------------------------------------------------- #
 # Self-hosted GoatCounter (cookieless, so no consent banner) on its own

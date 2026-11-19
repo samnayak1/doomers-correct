@@ -8,8 +8,10 @@ Inspired by [@usr_bin_roygbiv](https://x.com/usr_bin_roygbiv)'s
 Independent rebuild — its own collection, storage and model. No affiliation.
 
 A worker scrapes via [JobSpy](https://github.com/speedyapply/JobSpy) into SQLite,
-Litestream replicates that to S3, a read-only FastAPI serves it, and a static page
-draws the chart. Sized for a 1 GB EC2 micro: caps total 752 MiB (dev) / 784 MiB
+Litestream replicates that to S3, a FastAPI serves it (read-only against the
+scraped data), and a static page draws the chart. Signed-in visitors (AWS
+Cognito) can match their resume, track applications and post dated predictions
+that anyone can vote on; a mailer emails each author on the day, through SES. Sized for a 1 GB EC2 micro: caps total 752 MiB (dev) / 784 MiB
 (prod), measured 181 MiB under an active scrape.
 
 ## Setup
@@ -61,19 +63,76 @@ $C exec worker python -m common.pipeline --country india # scrape now
 $C exec worker python -m common.pipeline --forecast-only # refit models only
 $C exec worker python /app/scripts/seed.py --days 150 --reset   # synthetic data
 $C exec db-replicate litestream snapshots /data/jobs.db  # replication status
+$C exec db-replicate litestream snapshots /data/app.db   # ... of accounts/predictions
+$C logs -f mailer                                        # reminder emails
+$C exec worker python /app/scripts/moderate.py reports   # most-reported predictions
+$C exec worker python /app/scripts/moderate.py hide 42   # take one off the site (unhide 42 to undo)
 $C down                                                  # stop, keep data
 $C down -v                                               # stop AND delete data
 ```
 
-Restore is automatic on a fresh instance. By hand: stop `worker` and `api`, then
-`$C run --rm db-replicate litestream restore -o /data/jobs.db /data/jobs.db`,
-optionally with `-timestamp 2026-09-05T00:00:00Z`.
+Restore is automatic on a fresh instance, for both databases. By hand: stop
+`worker`, `api` and `mailer`, then
+`$C run --rm db-replicate litestream restore -o /data/jobs.db /data/jobs.db`
+(or `app.db`), optionally with `-timestamp 2026-09-05T00:00:00Z`.
+
+**Mail stuck?** The outbox is a table, so ask it:
+
+```bash
+$C exec worker python -c "import sqlite3; c=sqlite3.connect('/data/app.db'); \
+  print(c.execute('select status, count(*) from outbox group by 1').fetchall()); \
+  print(c.execute('select id, attempts, last_error from outbox where last_error is not null order by id desc limit 10').fetchall())"
+```
+
+`pending` rows past their time mean the mailer is down or `SES_FROM` is unset;
+`failed` rows carry SES's reason. Delivery is at-least-once: a crash between
+SES accepting a message and the row being marked `sent` re-sends it.
+
+## Accounts and reminder email
+
+Everything signed-in stays visible to everyone; using it while signed out
+opens a "sign up or log in" dialog. Until Cognito is configured it all stays
+in that state. One-time setup:
+
+**SES (ap-south-1)** — start first; production access takes a day or so.
+1. Verify the domain identity with Easy DKIM (three CNAMEs), add a custom
+   MAIL FROM subdomain (MX + SPF TXT), and a DMARC record (`p=none` to start).
+2. Request production access. In the sandbox SES only emails addresses you
+   have verified yourself.
+3. Turn on the account-level suppression list for bounces and complaints.
+4. Give the IAM key in `.env` `ses:SendEmail` and `ses:SendRawEmail` on that
+   identity. Set `SES_FROM`, e.g. `Are doomers correct? <reminders@yourdomain>`.
+
+**Cognito**
+1. User pool: sign in with email, email verification required, self sign-up on.
+2. App client **with a client secret**, authorization-code grant, scopes
+   `openid email`. Callback URL `https://<domain>/api/auth/callback` (and
+   `http://localhost:8080/api/auth/callback` for dev); sign-out URL
+   `https://<domain>/` (and `http://localhost:8080/`).
+3. Turn on the Hosted UI / managed login with a domain prefix.
+4. Point the pool's own email (verification codes) at the SES identity -
+   Cognito's built-in sender stops at about 50 emails a day.
+5. Fill in `SITE_URL`, `COGNITO_*` and `SESSION_SECRET` in `.env`.
+
+How it hangs together: the API does the OAuth code exchange itself and keeps the
+ID and refresh tokens in HttpOnly cookies, so page scripts never hold a token.
+Predictions, votes, reports and the email outbox live in `app.db`, a second
+SQLite file, so a vote never waits behind a scrape's write lock on `jobs.db`.
+A prediction and its reminder row are written in one transaction (a
+transactional outbox); the `mailer` container drains due rows at 08:00 IST on
+the target date. Predictions cannot be edited or deleted; moderation only hides
+them (`scripts/moderate.py`), and a hidden prediction's reminder still goes out.
 
 ## API
 
 `/api/series?country=` · `/api/jobs?country=&q=&site=&remote=&sort=` ·
 `/api/history?country=` · `/api/countries` · `/api/health` ·
 `/api/docs`
+
+Signed-in and predictions: `/api/auth/{login,callback,refresh,logout}` ·
+`/api/me` · `/api/predictions?sort=upcoming|due|newest|top&cursor=` ·
+`/api/predictions/{id}` · `POST /api/predictions` · `PUT /api/predictions/{id}/vote` ·
+`POST /api/predictions/{id}/report` · `POST /api/voter` · `/api/unsubscribe?t=`
 
 ## Before you change things
 
@@ -108,10 +167,11 @@ continues and knows nothing about hiring cycles, funding or layoffs.
 
 ```
 common/     config, SQLite, JobSpy wrapper, forecasting, pipeline
-worker/     nightly scheduler + image        api/     read-only JSON API + image
+worker/     nightly scheduler, mailer + image
+api/        JSON API (main.py) + accounts/predictions routes (accounts.py) + image
 web/        static page; nginx + Caddy       caddy/   production TLS config
 litestream/ replication config
-scripts/    seed data, swap setup
+scripts/    seed data, swap setup, moderate.py
 docker-compose{,.dev,.prod}.yml              run.sh   serial build + deploy
 ```
 

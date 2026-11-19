@@ -18,14 +18,17 @@ from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel, Field
 
-from common import config, contact, db, match, service
+from common import auth, config, contact, db, match, service
+
+from . import accounts
 
 app = FastAPI(title="Are doomers correct?", docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 class MatchGate:
-    """Refuse resume uploads beyond MATCH_CONCURRENT before reading their bodies.
+    """Refuse resume uploads beyond MATCH_CONCURRENT, or without a login, before
+    reading their bodies.
 
     Each upload briefly holds ~12 MB of copies of the same document, and an OOM
     kill takes the chart down too. This has to be middleware: FastAPI parses the
@@ -34,6 +37,9 @@ class MatchGate:
     rather than queued, since a waiting upload keeps its memory. The event loop
     is single-threaded and nothing awaits between the check and the increment,
     so a plain counter is safe.
+
+    The login check is here for the same reason: an anonymous upload is
+    refused on its cookie alone, without the server reading megabytes first.
     """
 
     def __init__(self, inner) -> None:
@@ -44,6 +50,13 @@ class MatchGate:
         if not (scope["type"] == "http" and scope["method"] == "POST"
                 and scope["path"] == "/api/match"):
             await self.inner(scope, receive, send)
+            return
+        cookies = next((v.decode("latin-1") for k, v in scope.get("headers", [])
+                        if k == b"cookie"), "")
+        try:
+            auth.verify(auth.cookie_value(cookies, auth.ID_COOKIE))
+        except auth.AuthError as exc:
+            await accounts.auth_error_response(exc)(scope, receive, send)
             return
         if self.busy >= max(1, config.MATCH_CONCURRENT):
             refused = JSONResponse(
@@ -59,6 +72,7 @@ class MatchGate:
 
 
 app.add_middleware(MatchGate)
+accounts.install(app)
 
 STARTED = datetime.now(timezone.utc)
 
@@ -198,13 +212,12 @@ class MatchIn(BaseModel):
     pdf: str = Field("", max_length=int(config.MATCH_MAX_PDF_BYTES * 1.4) + 16)
     text: str = Field("", max_length=40000)
     remote: str = Field("", max_length=8)
-    token: str = Field(..., max_length=2000)
     country: str = Field(config.DEFAULT_COUNTRY, max_length=24)
 
 
 @app.get("/api/match")
 def match_config():
-    return {"enabled": match.enabled(), "endpoint": contact.widget_endpoint_any(),
+    return {"enabled": match.enabled(),
             "max_pdf_bytes": config.MATCH_MAX_PDF_BYTES,
             "window_days": config.MATCH_WINDOW_DAYS}
 
@@ -212,11 +225,12 @@ def match_config():
 @app.post("/api/match")
 def match_resume(body: MatchIn, request: Request):
     country = config.country_key(body.country)
+    # MatchGate already refused anyone without a valid session; this reads who.
+    sub = auth.verify(request.cookies.get(auth.ID_COOKIE))["sub"]
     try:
         with services() as svc:
             out = match.submit(svc.job_repo.db, country, pdf_b64=body.pdf or None,
-                               text=body.text or None, remote=body.remote,
-                               token=body.token, ip=client_ip(request))
+                               text=body.text or None, remote=body.remote, user_sub=sub)
     except match.MatchError as exc:
         raise HTTPException(exc.status, str(exc))
     out["currency"] = config.COUNTRIES[country]["currency"]

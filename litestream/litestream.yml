@@ -29,3 +29,17 @@ dbs:
         # copies of the database, so shortening this multiplies storage cost.
         snapshot-interval: 24h
         retention: 168h
+
+  # Accounts, predictions, votes and the reminder-email outbox. Small and
+  # write-light; same settings, its own prefix so the two never overwrite
+  # each other. Losing up to one sync interval here can drop a just-made
+  # prediction or re-send a reminder - the outbox is at-least-once anyway.
+  - path: /data/app.db
+    replicas:
+      - type: s3
+        bucket: ${S3_BUCKET}
+        path: ${LITESTREAM_APP_PREFIX}
+        region: ${AWS_REGION}
+        sync-interval: ${LITESTREAM_SYNC_INTERVAL}
+        snapshot-interval: 24h
+        retention: 168h

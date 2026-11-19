@@ -63,11 +63,18 @@ def clean(name: str, email: str, message: str) -> tuple[str, str, str]:
 
 class RateLimiter:
     """In-process sliding windows. Correct because the API runs one uvicorn
-    worker; a second worker would need these counts somewhere shared."""
+    worker; a second worker would need these counts somewhere shared.
 
-    def __init__(self, per_ip_hour: int, per_day: int, *, busy: str, too_many: str) -> None:
+    Keyed by IP for the contact form; resume matching keys it by account
+    instead, over a day (`window`). `error` is the exception class raised.
+    """
+
+    def __init__(self, per_ip_hour: int, per_day: int, *, busy: str, too_many: str,
+                 window: int = 3600, error: type[Exception] | None = None) -> None:
         self.per_ip_hour, self.per_day = per_ip_hour, per_day
         self.busy, self.too_many = busy, too_many
+        self.window = window
+        self.error = error or ContactError
         self._lock = threading.Lock()
         self._by_ip: dict[str, deque[float]] = {}
         self._all: deque[float] = deque()
@@ -82,12 +89,12 @@ class RateLimiter:
         with self._lock:
             self._trim(self._all, now - 86400)
             if len(self._all) >= self.per_day:
-                raise ContactError(429, self.busy)
+                raise self.error(429, self.busy)
             q = self._by_ip.get(ip)
             if q is not None:
-                self._trim(q, now - 3600)
+                self._trim(q, now - self.window)
                 if len(q) >= self.per_ip_hour:
-                    raise ContactError(429, self.too_many)
+                    raise self.error(429, self.too_many)
 
     def record(self, ip: str) -> None:
         now = time.time()
@@ -96,7 +103,7 @@ class RateLimiter:
             self._by_ip.setdefault(ip, deque()).append(now)
             # Drop idle entries so the map cannot grow without bound.
             if len(self._by_ip) > 5000:
-                horizon = now - 3600
+                horizon = now - self.window
                 for k in [k for k, v in self._by_ip.items() if not v or v[-1] < horizon]:
                     del self._by_ip[k]
 
@@ -132,15 +139,20 @@ def verify(token: str) -> bool:
         return False
 
 
-def send(name: str, email: str, message: str, ip: str) -> None:
-    """Post the message to your chat as your bot.
+def telegram_enabled() -> bool:
+    return bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
+
+
+def notify(text: str) -> bool:
+    """Post plain text to your chat as your bot. True if Telegram accepted it.
 
     Plain text on purpose: no parse_mode means nothing a visitor types can be
     read as Markdown or HTML formatting. Link previews are off so Telegram does
     not go and fetch whatever URL a visitor pastes.
     """
-    head = f"New message from aredoomerscorrect\nFrom: {name or '(no name given)'} <{email}>\nIP: {ip}\n\n"
-    text = head + message[: 4096 - len(head)]   # Telegram's per-message limit
+    if not telegram_enabled():
+        return False
+    text = text[:4096]   # Telegram's per-message limit
     req = urllib.request.Request(
         f"{config.TELEGRAM_API}/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
         data=json.dumps({"chat_id": config.TELEGRAM_CHAT_ID, "text": text,
@@ -162,7 +174,13 @@ def send(name: str, email: str, message: str, ip: str) -> None:
     except Exception as exc:
         print(f"[contact] Telegram unreachable: {type(exc).__name__}", flush=True)
         ok = False
-    if not ok:
+    return bool(ok)
+
+
+def send(name: str, email: str, message: str, ip: str) -> None:
+    """Deliver a contact-form message, or tell the visitor it did not go."""
+    head = f"New message from aredoomerscorrect\nFrom: {name or '(no name given)'} <{email}>\nIP: {ip}\n\n"
+    if not notify(head + message[: 4096 - len(head)]):
         raise ContactError(502, "The message could not be sent. Please try again in a few minutes.")
 
 

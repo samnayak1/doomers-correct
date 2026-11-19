@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY common/ /app/common/
 COPY scripts/ /app/scripts/
-COPY worker/scheduler.py /app/
+COPY worker/scheduler.py worker/mailer.py /app/
 
 ENV PYTHONPATH=/app DATA_DIR=/data
 VOLUME ["/data"]

@@ -4,9 +4,11 @@ services:
   db-restore:
     environment:
       LITESTREAM_PREFIX: ${LITESTREAM_DEV_S3_PREFIX:-job-doomers-dev/database.sqlite}
+      LITESTREAM_APP_PREFIX: ${LITESTREAM_DEV_APP_S3_PREFIX:-job-doomers-dev/app.sqlite}
   db-replicate:
     environment:
       LITESTREAM_PREFIX: ${LITESTREAM_DEV_S3_PREFIX:-job-doomers-dev/database.sqlite}
+      LITESTREAM_APP_PREFIX: ${LITESTREAM_DEV_APP_S3_PREFIX:-job-doomers-dev/app.sqlite}
 
   web:
     build:

@@ -40,24 +40,28 @@ services:
 
         # Ordering matters here too. api and worker wait on this container
         # exiting 0, so anything that exits non-zero holds the whole site down.
-        if [ -f /data/jobs.db ]; then
-          echo "local database present - skipping restore"
-          exit 0
-        fi
-        if [ -z "$${S3_BUCKET:-}" ]; then
-          echo "S3_BUCKET unset - starting with no database, the worker will create one"
-          exit 0
-        fi
-        # No local database: a failure here is worth blocking on. Starting
-        # anyway would quietly begin a fresh history and orphan the replica.
-        if ! litestream restore -if-replica-exists \
-             -config /etc/litestream.yml /data/jobs.db; then
-          echo "RESTORE FAILED and there is no local database." >&2
-          echo "Refusing to start rather than silently begin an empty history." >&2
-          echo "Check credentials and LITESTREAM_PREFIX, or touch /data/jobs.db" >&2
-          echo "inside the data volume to start fresh deliberately." >&2
-          exit 1
-        fi
+        # Two databases, same rule for each: jobs.db (the scraped history) and
+        # app.db (accounts, predictions, votes and the email outbox).
+        for DB in /data/jobs.db /data/app.db; do
+          if [ -f "$$DB" ]; then
+            echo "$$DB present - skipping restore"
+            continue
+          fi
+          if [ -z "$${S3_BUCKET:-}" ]; then
+            echo "S3_BUCKET unset - starting with no $$DB, it will be created"
+            continue
+          fi
+          # No local database: a failure here is worth blocking on. Starting
+          # anyway would quietly begin a fresh history and orphan the replica.
+          if ! litestream restore -if-replica-exists \
+               -config /etc/litestream.yml "$$DB"; then
+            echo "RESTORE FAILED for $$DB and there is no local copy." >&2
+            echo "Refusing to start rather than silently begin an empty history." >&2
+            echo "Check credentials and the Litestream prefixes, or touch $$DB" >&2
+            echo "inside the data volume to start fresh deliberately." >&2
+            exit 1
+          fi
+        done
         # Litestream runs as root here, so the restored jobs.db (and anything
         # beside it) came out root-owned - after the chown above. The API then
         # could not open it and answered "dataset not built yet", and the worker
@@ -88,10 +92,10 @@ services:
           echo "S3_BUCKET unset - replication disabled"
           exec sleep infinity
         fi
-        # The worker creates the database on its first run; wait rather than
-        # crash-looping until it exists.
-        while [ ! -f /data/jobs.db ]; do
-          echo "waiting for /data/jobs.db"; sleep 10
+        # The worker creates jobs.db on its first run, and the api or mailer
+        # creates app.db on start; wait rather than crash-looping until both exist.
+        while [ ! -f /data/jobs.db ] || [ ! -f /data/app.db ]; do
+          echo "waiting for /data/jobs.db and /data/app.db"; sleep 10
         done
         exec litestream replicate -config /etc/litestream.yml
 
@@ -105,18 +109,20 @@ services:
     environment:
       DATA_DIR: /data
       DB_PATH: /data/jobs.db
+      APP_DB_PATH: /data/app.db
     depends_on:
       db-restore:
         condition: service_completed_successfully
     volumes:
       # Read-write on purpose: SQLite in WAL mode must touch the -shm sidecar
-      # even to read. The API opens the file with `file:...?mode=ro` instead.
+      # even to read. The API opens jobs.db with `file:...?mode=ro` instead;
+      # app.db (accounts, predictions, votes) is the one file it writes.
       - data:/data
     # Idles at ~50 MiB. Resume uploads are what set this: with 10k vectors and
     # 2 MB PDFs, 30 at once peaked near 100 MiB behind the MATCH_CONCURRENT gate
     # (and hit the limit without it), so this was raised from 112. Ceilings now total
-    # 912 MiB dev, 1008 MiB prod with cap, valkey + goatcounter - ceilings, not usage; the
-    # stack idles near 250 MiB and only the worker climbs, during a scrape.
+    # 1008 MiB dev, 1104 MiB prod with cap, valkey, goatcounter + mailer - ceilings, not
+    # usage; the stack idles near 300 MiB and only the worker climbs, during a scrape.
     user: "10001:0"
     mem_limit: 144m
     mem_reservation: 48m
@@ -135,6 +141,7 @@ services:
     environment:
       DATA_DIR: /data
       DB_PATH: /data/jobs.db
+      APP_DB_PATH: /data/app.db
       # Litestream already replicates continuously; the nightly gzip of the
       # whole file would be a second, coarser copy of the same data.
       DB_BACKUP_TO_S3: "false"
@@ -150,6 +157,38 @@ services:
     mem_reservation: 48m
     cpus: 1.0
     pids_limit: 128
+    logging: *logging
+
+  # Outbox relay: sends prediction reminder emails through SES. The worker's
+  # image (boto3 is already in it) with a different command, in its own
+  # container so a scrape climbing toward 512 MiB never delays the mail.
+  # Asleep almost always; importing boto3 is what sets the ceiling.
+  mailer:
+    image: adc-worker:latest
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      DATA_DIR: /data
+      DB_PATH: /data/jobs.db
+      APP_DB_PATH: /data/app.db
+    depends_on:
+      db-restore:
+        condition: service_completed_successfully
+    volumes:
+      - data:/data
+    command: ["python", "-u", "/app/mailer.py"]
+    # The image's own healthcheck looks for scheduler.py.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f mailer.py > /dev/null || exit 1"]
+      interval: 60s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    user: "10001:0"
+    mem_limit: 96m
+    mem_reservation: 24m
+    cpus: 0.25
+    pids_limit: 64
     logging: *logging
 
   # Self-hosted proof-of-work CAPTCHA guarding the contact form. The proxy

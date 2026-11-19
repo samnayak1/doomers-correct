@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
  && python -c "import sqlite3, sqlite_vec; c = sqlite3.connect(':memory:'); c.enable_load_extension(True); sqlite_vec.load(c); print('sqlite-vec', c.execute('select vec_version()').fetchone()[0])"
 
 COPY common/ /app/common/
-COPY api/__init__.py api/main.py /app/api/
+COPY api/__init__.py api/main.py api/accounts.py /app/api/
 
 ENV PYTHONPATH=/app DATA_DIR=/data
 EXPOSE 8000
@@ -26,7 +26,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=4s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)" || exit 1
 
-# One worker: this is a read-only API on a 1 GB box, and a second process would
+# One worker: the rate limiters are in-process (a second worker would need
+# their counts somewhere shared), and on a 1 GB box a second process would
 # double the resident footprint for no throughput we need.
 USER 10001:0
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", \
