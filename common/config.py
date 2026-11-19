@@ -221,13 +221,13 @@ if COGNITO_DOMAIN and not COGNITO_DOMAIN.startswith("http"):
 # voter's identity and breaks unsubscribe links already sent.
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "").strip()
 COOKIE_SECURE = SITE_URL.startswith("https://")
-MATCH_PER_USER_DAY = _int("MATCH_PER_USER_DAY", 10)
+MATCH_PER_USER_DAY = _int("MATCH_PER_USER_DAY", 3)          # per account, rolling 24 hours
 
 # --- predictions ------------------------------------------------------------ #
 PREDICTION_MIN_DAYS = _int("PREDICTION_MIN_DAYS", 7)          # earliest target: today + this
 PREDICTION_MAX_DATE = os.environ.get("PREDICTION_MAX_DATE", "2027-12-31")
 PREDICTION_MAX_CHARS = _int("PREDICTION_MAX_CHARS", 280)
-PREDICTIONS_PER_USER_DAY = _int("PREDICTIONS_PER_USER_DAY", 5)
+PREDICTIONS_PER_USER_DAY = _int("PREDICTIONS_PER_USER_DAY", 1)   # per account, rolling 24 hours
 # A new anonymous voter identity costs one Cap solve; this caps how many one
 # connection can mint a day, so vote-stuffing needs many IPs as well.
 VOTER_ISSUE_PER_IP_DAY = _int("VOTER_ISSUE_PER_IP_DAY", 20)

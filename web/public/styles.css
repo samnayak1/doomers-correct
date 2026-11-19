@@ -512,3 +512,48 @@ td.why { color: var(--ink-mute); font-size: 12.5px; max-width: 200px; }
   .login-actions a { flex: 1 1 auto; justify-content: center; min-height: 44px; }
   .login-actions .linkish { margin: 0 auto; min-height: 40px; }
 }
+
+/* ── Resume match, inside My applications ────────────────────────────────── */
+.match-box { background: var(--bg); border: 1px solid var(--panel-edge); border-radius: 4px;
+  padding: 14px 16px 16px; margin-bottom: 18px; }
+.match-box[hidden] { display: none; }
+.match-box .panel-title { font-size: 15px; }
+
+/* Results: a light green wash, so the matches read as their own block, and
+   each row fades down into place a beat after the one above it. */
+#match-results { background: #effaf3; border: 1px solid #cdebd8; border-radius: 4px;
+  padding: 12px 12px 4px; scroll-margin-top: 12px; }
+#match-results .table-scroll { background: transparent; border-color: #cdebd8; }
+#match-results thead th { background: #e2f4e9; }
+#match-results tbody tr { background: #f7fcf9; }
+#match-results tbody tr:hover { background: #e4f5ea; }
+#match-results.revealed .match-profile { animation: match-in .4s ease-out both; }
+#match-results.revealed tbody tr {
+  animation: match-in .45s ease-out both;
+  animation-delay: calc(var(--i, 0) * 45ms + 120ms);
+}
+@keyframes match-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+
+/* ── Predictions: a warm tint, so the tab stands apart from the job tables ── */
+.pred { background: #fff8eb; border-color: #f0dcb4; }
+.pred:hover { border-color: #e6c98f; }
+.pred.mine { border-left-color: var(--series-2); }
+@keyframes pred-fresh { from { background: #ffe9c2; } to { background: #fff8eb; } }
+.pred .vote { background: #fffdf8; border-color: #ecd9b3; }
+.pred-ratio { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor; margin-left: 2px; }
+.pred-ratio[hidden] { display: none; }
+.pred-ratio.lean-up { color: var(--good); background: #eaf5ec; }
+.pred-ratio.lean-down { color: var(--bad); background: #fbeced; }
+
+@media (prefers-reduced-motion: reduce) {
+  #match-results.revealed tbody tr, #match-results.revealed .match-profile, .pred.fresh { animation: none; }
+}
+
+@media (max-width: 700px) {
+  /* Two boxes deep inside the panel: give the cards their width back. */
+  .match-box { padding: 12px 10px 12px; margin-left: -6px; margin-right: -6px; }
+  #match-results { padding: 8px 6px 2px; }
+  #match-jobs td.actions { flex-wrap: wrap; row-gap: 6px; }
+}
+.pred-limit { font-size: 12.5px; color: var(--ink-mute); }

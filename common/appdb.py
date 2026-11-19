@@ -19,6 +19,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_pred_top ON predictions (status, score, id)",
     "CREATE INDEX IF NOT EXISTS ix_pred_user ON predictions (user_sub, created_at)",
     "CREATE INDEX IF NOT EXISTS ix_outbox_due ON outbox (status, next_attempt_at)",
+    "CREATE INDEX IF NOT EXISTS ix_usage ON usage (kind, user_sub, at)",
 ]
 
 # Ordered, append-only, as in db.py. Each takes the database.

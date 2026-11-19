@@ -242,6 +242,9 @@ function showTab(name, { focus = false } = {}) {
     if (on && focus) btn.focus();
   }
   if (name === 'applied') renderFlow();
+  // The scrape log explains the listings, so it only shows alongside them.
+  const runs = $('panel-runs');
+  if (runs) runs.hidden = name !== 'listings';
   onTab(name);
   const u = new URL(location);
   // A link to one prediction (#prediction-42, from a reminder email) keeps its hash.

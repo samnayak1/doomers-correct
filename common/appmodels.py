@@ -75,6 +75,18 @@ class Report(AppModel):
         primary_key = CompositeKey("prediction_id", "reporter_key")
 
 
+class Usage(AppModel):
+    """One row per metered action (a resume match), for per-account daily
+    quotas that survive restarts - an in-memory counter reset on every deploy."""
+    id = AutoField()
+    kind = TextField()                             # "match"
+    user_sub = TextField()
+    at = TextField()
+
+    class Meta:
+        table_name = "usage"
+
+
 class Outbox(AppModel):
     """Transactional outbox: written in the same transaction as the thing that
     needs the email, drained by worker/mailer.py. The table *is* the queue."""
@@ -95,4 +107,4 @@ class Outbox(AppModel):
         indexes = ((("prediction_id", "kind"), True),)
 
 
-ALL_APP_MODELS = [User, Prediction, Vote, Report, Outbox]
+ALL_APP_MODELS = [User, Prediction, Vote, Report, Usage, Outbox]

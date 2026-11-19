@@ -19,7 +19,7 @@
       Is this the collapse of the tech industry?</p>
       <p class="credit">Inspired by the US tracker by
         <a href="https://doomersareretardedcommunists.com/" rel="noopener noreferrer" target="_blank">@usr_bin_roygbiv</a>
-        (without endorsing the language) &mdash; independent rebuild, no affiliation.</p>
+        (without endorsing the language) I have no affiliation with Roy.</p>
     </div>
     <nav class="controls">
       <span class="account" id="account" hidden></span>
@@ -28,7 +28,7 @@
   </header>
 
   <nav class="jump" aria-label="Jump to a section">
-    <a href="#panel-match" id="jump-match" hidden>Match your resume</a>
+    <a href="#applications" data-tab="applied" id="jump-match" hidden>Match your resume</a>
     <a href="#panel-listings" data-tab="listings">Current listings</a>
     <a href="#applications" data-tab="applied">My applications</a>
     <a href="#predictions" data-tab="predictions">Predictions</a>
@@ -52,52 +52,6 @@
     </div>
     <div class="legend-roles" id="lg-roles" hidden></div>
     <p class="note" id="model-note"></p>
-  </section>
-
-  <section class="panel" id="panel-match" aria-labelledby="match-title" hidden>
-    <h2 class="panel-title" id="match-title">Match your resume</h2>
-    <p class="caption">Upload your resume to find the listings from the last <span id="match-window">few weeks</span> that fit it best.</p>
-    <p class="privacy"><b>Your resume is not stored anywhere.</b> It is read once to make the match,
-    then discarded &mdash; never saved to disk, our database, or our logs. Matching needs a free
-    account, which keeps your email address only for the reminders you ask for.</p>
-    <form class="match-form" id="match-form" novalidate>
-      <div class="match-input">
-        <label class="file-pick">
-          <input type="file" id="match-file" accept="application/pdf,.pdf">
-          <span id="match-file-label">Choose a PDF</span>
-        </label>
-        <button type="button" class="linkish" id="match-paste-toggle">or paste the text instead</button>
-      </div>
-      <textarea id="match-text" rows="8" maxlength="20000" hidden
-        placeholder="Paste your resume here"></textarea>
-      <div class="match-row">
-        <select id="match-remote" aria-label="Location type">
-          <option value="">Remote or on-site</option>
-          <option value="yes">Remote only</option>
-          <option value="no">On-site / hybrid only</option>
-        </select>
-      </div>
-      <div class="contact-actions">
-        <button type="submit" id="match-send">Find matching jobs</button>
-        <span class="contact-status" id="match-status" role="status" aria-live="polite"></span>
-      </div>
-      <p class="note">To work out your skills and level, the resume is sent to Google's Gemini API on
-      a paid plan, under which Google does not use it to train its models. Results are ranked by
-      score = cosine similarity + 0.03 if the listing's category fits your resume, &minus; 0.06 if its
-      title is clearly too senior or too junior for you.</p>
-    </form>
-    <div id="match-results" hidden>
-      <p class="match-profile" id="match-profile"></p>
-      <div class="table-scroll">
-        <table id="match-jobs">
-          <thead><tr>
-            <th>Title</th><th>Company</th><th>Location</th><th>Source</th>
-            <th>Posted</th><th>Why</th><th></th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
   </section>
 
   <section class="panel" id="panel-listings" aria-label="Listings">
@@ -145,6 +99,53 @@
     </div>
 
     <div id="tab-applied" role="tabpanel" aria-labelledby="tab-btn-applied" hidden>
+      <div class="match-box" id="panel-match" aria-labelledby="match-title" hidden>
+        <h3 class="panel-title" id="match-title">Match your resume</h3>
+        <p class="caption">Upload your resume to find the listings from the last <span id="match-window">few weeks</span> that fit it best.
+          <span id="match-per-day"></span></p>
+        <p class="privacy"><b>Your resume is not stored anywhere.</b> It is read once to make the match,
+        then discarded and never saved to disk, our database, or our logs. Matching needs a free
+        account, which keeps your email address only for the reminders you ask for.</p>
+        <form class="match-form" id="match-form" novalidate>
+          <div class="match-input">
+            <label class="file-pick">
+              <input type="file" id="match-file" accept="application/pdf,.pdf">
+              <span id="match-file-label">Choose a PDF</span>
+            </label>
+            <button type="button" class="linkish" id="match-paste-toggle">or paste the text instead</button>
+          </div>
+          <textarea id="match-text" rows="8" maxlength="20000" hidden
+            placeholder="Paste your resume here"></textarea>
+          <div class="match-row">
+            <select id="match-remote" aria-label="Location type">
+              <option value="">Remote or on-site</option>
+              <option value="yes">Remote only</option>
+              <option value="no">On-site / hybrid only</option>
+            </select>
+            <div class="cap-slot" id="match-cap-slot"></div>
+          </div>
+          <div class="contact-actions">
+            <button type="submit" id="match-send">Find matching jobs</button>
+            <span class="contact-status" id="match-status" role="status" aria-live="polite"></span>
+          </div>
+          <p class="note">To work out your skills and level, the resume is sent to Google's Gemini API on
+          a paid plan, under which Google does not use it to train its models. Results are ranked by
+          score = cosine similarity + 0.03 if the listing's category fits your resume, &minus; 0.06 if its
+          title is clearly too senior or too junior for you.</p>
+        </form>
+        <div id="match-results" hidden>
+          <p class="match-profile" id="match-profile"></p>
+          <div class="table-scroll">
+            <table id="match-jobs">
+              <thead><tr>
+                <th>Title</th><th>Company</th><th>Location</th><th>Source</th>
+                <th>Posted</th><th>Why</th><th></th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
       <p class="privacy"><b>Saved only in this browser.</b> This list is never sent to our server.
       To use it in another browser, export it here and import it there: the two lists are merged,
       and a job on both keeps whichever copy was changed last. Adding or changing jobs needs a
@@ -184,7 +185,7 @@
 
     <div id="tab-predictions" role="tabpanel" aria-labelledby="tab-btn-predictions" hidden>
       <p class="caption">Call it now, see who was right later. Predictions are public and permanent
-      &mdash; they cannot be edited or deleted. On the day, we email you a reminder.</p>
+      i.e they cannot be edited or deleted. On the day, we email you a reminder.</p>
       <p class="privacy" id="pred-signed-out" hidden><b>Anyone can vote.</b> Posting a prediction needs a free account.
         <button type="button" class="linkish" id="pred-login">Sign up or log in</button></p>
       <p class="privacy warn" id="pred-reminders-off" hidden><b>Reminder emails are off</b> for your account.
@@ -204,6 +205,7 @@
         </div>
         <div class="contact-actions" id="pred-post">
           <button type="submit">Post prediction</button>
+          <span class="pred-limit" id="pred-per-day"></span>
         </div>
         <div class="pred-confirm" id="pred-confirm" role="group" aria-labelledby="pred-confirm-q" hidden>
           <p id="pred-confirm-q"><b>This is permanent and public.</b> It cannot be edited or deleted.
@@ -242,18 +244,15 @@
     <summary>Method and caveats</summary>
     <p><strong>Collection.</strong> Every night at midnight a worker queries public job boards
     through <a href="https://github.com/speedyapply/JobSpy" rel="noopener noreferrer" target="_blank">JobSpy</a>
-    and stores what it finds in SQLite. Every run issues the same set of queries &mdash; sampling a
-    rotating subset would be cheaper, but then the count would move with the rotation rather
-    than with the market.</p>
-    <p><strong>The forecast.</strong> For the first month of collected data the projection is an
-    ordinary least-squares line. After that it switches to a non-seasonal ARIMA(p,&nbsp;d,&nbsp;q),
-    with the differencing order chosen by an augmented Dickey&ndash;Fuller test and the rest by AICc.
+    and stores what it finds in SQLite.</p>
+    <p><strong>The forecast.</strong> a non-seasonal ARIMA(p,&nbsp;d,&nbsp;q),
+    with the differencing order chosen by an augmented Dickey Fuller test and the rest by AICc.
     It is fitted in log space and damped, so it flattens instead of running off the chart. The band
     is a 95% prediction interval.</p>
   </details>
 
   <details class="method" id="contact">
-    <summary>Contact &mdash; report a problem or contribute</summary>
+    <summary>Contact to report a problem or contribute</summary>
     <form class="contact-form" id="contact-form" novalidate>
       <label>Name <span class="opt">(optional)</span>
         <input type="text" name="name" maxlength="100" autocomplete="name"></label>

@@ -1,6 +1,6 @@
 import { drawChart, focusRole, highlightRole, prettyRole } from '/chart.js';
 import { initApplied, markButton } from '/applied.js';
-import { apiFetch, gate, initAuth } from '/auth.js';
+import { apiFetch, gate, initAuth, isLoggedIn } from '/auth.js';
 import { initPredictions, showPredictions } from '/predictions.js';
 
 const $ = (id) => document.getElementById(id);
@@ -303,7 +303,7 @@ addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { if (lastSeries) renderChart(lastSeries); }, 150);
 });
 
-/* ── captcha (contact form) ─────────────────────────────────────────────── */
+/* ── captcha (shared by contact and resume match) ──────────────────────── */
 // Nothing here runs until someone opens a form: readers of the chart never
 // download the widget or start a proof-of-work they did not ask for.
 let capEndpoint = null;
@@ -412,8 +412,10 @@ $('contact-form').addEventListener('submit', async (e) => {
 /* ── resume match ──────────────────────────────────────────────────────── */
 // The panel stays hidden unless the server says matching is configured. It is
 // shown to everyone; using it needs an account, so a signed-out visitor who
-// picks a file or presses the button gets the sign-up modal instead.
+// picks a file or presses the button gets the sign-up modal instead. Signed
+// in, each match also takes a captcha - fetched only once the form is used.
 let matchCfg = null;
+let matchReady = null;
 let pasteMode = false;
 const MATCH_REASON = 'match your resume';
 
@@ -422,9 +424,25 @@ async function initMatch() {
     matchCfg = await api('/api/match');
     if (!matchCfg.enabled) return;
     $('match-window').textContent = `${matchCfg.window_days} days`;
+    $('match-per-day').textContent = `You can match ${plural(matchCfg.per_day, 'resume')} a day.`;
     $('panel-match').hidden = false;
     $('jump-match').hidden = false;
   } catch { /* matching is optional */ }
+}
+
+function prepareMatch() {
+  matchReady ||= (async () => {
+    try {
+      await loadCap(matchCfg.endpoint);
+      mountCap('match-cap-slot');
+      return true;
+    } catch {
+      $('match-send').disabled = true;
+      $('match-status').textContent = 'Resume matching is unavailable right now.';
+      return false;
+    }
+  })();
+  return matchReady;
 }
 
 const readBase64 = (file) => new Promise((resolve, reject) => {
@@ -443,16 +461,26 @@ function renderMatch(d) {
     + (p.roles.length ? ` · <b>${p.roles.map((r) => esc(pretty(r))).join(', ')}</b>` : '')
     + (p.skills.length ? `<br>${p.skills.map((k) => `<span class="pill">${esc(k)}</span>`).join('')}` : '');
   const tb = $('match-jobs').querySelector('tbody');
+  // --i staggers each row's fade-in (styles.css: .match-results tr).
   tb.innerHTML = d.rows.length
-    ? d.rows.map((r) => `<tr>${rowLead(r)}
+    ? d.rows.map((r, i) => `<tr style="--i:${i}">${rowLead(r)}
         <td class="why" data-l="Why">${esc((r.why || []).join(', ')) || '—'}</td>
         ${rowActions(r)}</tr>`).join('')
     : '<tr><td colspan="7" class="empty">No recent listings matched. Try again after the next scrape.</td></tr>';
-  $('match-results').hidden = false;
+  const box = $('match-results');
+  box.hidden = false;
+  // Restart the animation on a second match: drop the class, force a reflow, re-add.
+  box.classList.remove('revealed');
+  void box.offsetWidth;
+  box.classList.add('revealed');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  box.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
 }
 
 // Before the file picker opens, not after a file is chosen.
 $('match-file').addEventListener('click', (e) => { if (!gate(MATCH_REASON)) e.preventDefault(); });
+// Signed in and using the form: start loading the captcha widget.
+$('match-form').addEventListener('focusin', () => { if (matchCfg?.enabled && isLoggedIn()) prepareMatch(); });
 $('match-text').addEventListener('keydown', (e) => {
   if (e.key !== 'Tab' && !gate(MATCH_REASON)) e.preventDefault();
 });
@@ -485,11 +513,13 @@ $('match-form').addEventListener('submit', async (e) => {
     status.textContent = `That file is over ${Math.round(matchCfg.max_pdf_bytes / 1e6)} MB.`;
     return;
   }
+  if (!(await prepareMatch())) return;
 
   btn.disabled = true;
   try {
+    const token = await capToken('match-cap-slot', status);
     status.textContent = 'Reading your resume…';
-    const body = { remote: $('match-remote').value, country: state.country };
+    const body = { token, remote: $('match-remote').value, country: state.country };
     if (pasteMode) body.text = text; else body.pdf = await readBase64(file);
     const d = await apiFetch('/api/match', { method: 'POST', body, loginReason: MATCH_REASON });
     renderMatch(d);
@@ -503,6 +533,7 @@ $('match-form').addEventListener('submit', async (e) => {
       : err.message;
   } finally {
     btn.disabled = false;
+    mountCap('match-cap-slot');   // tokens are single-use
   }
 });
 

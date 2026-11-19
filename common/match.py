@@ -26,14 +26,14 @@ from .repository import JobRepository, VectorRepository
 
 SENIORITY = ["intern", "entry", "mid", "senior", "lead"]
 
-# Keyed by account, over a day: matching needs a login, and a verified-email
-# account costs an abuser more than the captcha this replaced. MATCH_PER_DAY
-# stays as the ceiling across everyone, since each match is two Gemini calls.
+# Three gates, cheapest first: a login (MatchGate, before the body is read),
+# a Cap captcha, then MATCH_PER_USER_DAY per account (common/quotas.py, kept
+# in app.db). This in-memory ceiling across everyone stays as the backstop on
+# Gemini spend - each match is two calls.
 limiter = contact.RateLimiter(
-    config.MATCH_PER_USER_DAY, config.MATCH_PER_DAY,
+    10**9, config.MATCH_PER_DAY,
     busy="Resume matching has reached its daily limit. Please try again tomorrow.",
-    too_many=f"That is {config.MATCH_PER_USER_DAY} resume matches today. Please try again tomorrow.",
-    window=86400,
+    too_many="", window=86400,
 )
 
 
@@ -239,7 +239,7 @@ def rank(conn, country: str, prof: dict, *, remote: bool | None) -> list[dict]:
 
 
 def enabled() -> bool:
-    return gemini.enabled() and auth.enabled()
+    return gemini.enabled() and auth.enabled() and contact.captcha_enabled()
 
 
 def decode_pdf(b64: str) -> bytes:
@@ -255,7 +255,10 @@ def decode_pdf(b64: str) -> bytes:
 
 
 def submit(conn, country: str, *, pdf_b64: str | None, text: str | None,
-           remote: str, user_sub: str) -> dict:
+           remote: str, token: str, take_quota) -> dict:
+    """`take_quota()` spends one of the account's daily matches, or raises
+    MatchError(429). It runs only after the captcha passes, so nothing that
+    cannot solve one can use up - or even probe - anyone's allowance."""
     if not enabled():
         raise MatchError(503, "Resume matching is not configured.")
     text = (text or "").strip()
@@ -266,10 +269,13 @@ def submit(conn, country: str, *, pdf_b64: str | None, text: str | None,
         raise MatchError(400, "That is too short to match on - paste the whole resume.")
     text = text[:20000]
 
-    limiter.check(user_sub)
+    limiter.check("all")
+    if not contact.verify(token):
+        raise MatchError(403, "The verification check failed. Please try again.")
     # Counted before the work, not on success: the Gemini calls cost money
     # whether or not they produce a match.
-    limiter.record(user_sub)
+    take_quota()
+    limiter.record("all")
 
     prof = profile(pdf=pdf, text=text or None)
     want_remote = {"yes": True, "no": False}.get(remote)

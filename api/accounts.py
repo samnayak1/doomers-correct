@@ -106,6 +106,7 @@ def prediction_rules() -> dict:
     lo, hi = predictions.date_bounds()
     return {"min_date": lo.isoformat(), "max_date": hi.isoformat(),
             "max_chars": config.PREDICTION_MAX_CHARS, "reminder_time": config.REMINDER_TIME,
+            "per_day": config.PREDICTIONS_PER_USER_DAY,
             "captcha": contact.widget_endpoint_any()}
 
 

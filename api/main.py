@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel, Field
 
-from common import auth, config, contact, db, match, service
+from common import auth, config, contact, db, match, quotas, service
 
 from . import accounts
 
@@ -212,12 +212,14 @@ class MatchIn(BaseModel):
     pdf: str = Field("", max_length=int(config.MATCH_MAX_PDF_BYTES * 1.4) + 16)
     text: str = Field("", max_length=40000)
     remote: str = Field("", max_length=8)
+    token: str = Field(..., max_length=2000)
     country: str = Field(config.DEFAULT_COUNTRY, max_length=24)
 
 
 @app.get("/api/match")
 def match_config():
-    return {"enabled": match.enabled(),
+    return {"enabled": match.enabled(), "endpoint": contact.widget_endpoint_any(),
+            "per_day": config.MATCH_PER_USER_DAY,
             "max_pdf_bytes": config.MATCH_MAX_PDF_BYTES,
             "window_days": config.MATCH_WINDOW_DAYS}
 
@@ -227,10 +229,16 @@ def match_resume(body: MatchIn, request: Request):
     country = config.country_key(body.country)
     # MatchGate already refused anyone without a valid session; this reads who.
     sub = auth.verify(request.cookies.get(auth.ID_COOKIE))["sub"]
+
+    def take_quota():
+        with accounts.app_session():
+            quotas.take("match", sub, config.MATCH_PER_USER_DAY, "resume match", "resume matches")
+
     try:
         with services() as svc:
             out = match.submit(svc.job_repo.db, country, pdf_b64=body.pdf or None,
-                               text=body.text or None, remote=body.remote, user_sub=sub)
+                               text=body.text or None, remote=body.remote,
+                               token=body.token, take_quota=take_quota)
     except match.MatchError as exc:
         raise HTTPException(exc.status, str(exc))
     out["currency"] = config.COUNTRIES[country]["currency"]

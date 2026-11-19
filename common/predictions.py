@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 from peewee import IntegrityError
 
-from . import config, contact
+from . import config, contact, quotas
 from .appmodels import Outbox, Prediction, Report, User, Vote, app_database
 
 IST = ZoneInfo(config.REMINDER_TZ)
@@ -133,10 +133,14 @@ def create(user: User, text: str, target_date: str, remind: bool) -> dict:
 
     now = utcnow()
     with app_database.atomic(lock_type="IMMEDIATE"):
-        recent = (Prediction.select().where((Prediction.user_sub == user.sub)
-                                            & (Prediction.created_at >= iso(now - timedelta(days=1)))).count())
-        if recent >= config.PREDICTIONS_PER_USER_DAY:
-            raise PredictionError(429, f"That is {config.PREDICTIONS_PER_USER_DAY} predictions today - come back tomorrow.")
+        recent = (Prediction.select(Prediction.created_at)
+                  .where((Prediction.user_sub == user.sub)
+                         & (Prediction.created_at >= iso(now - timedelta(days=1))))
+                  .order_by(Prediction.created_at.asc()))
+        if recent.count() >= config.PREDICTIONS_PER_USER_DAY:
+            raise PredictionError(429, quotas.limit_message(
+                config.PREDICTIONS_PER_USER_DAY, "prediction", "predictions",
+                quotas.wait_text(recent.first().created_at, now)))
         p = Prediction.create(user_sub=user.sub, text=text, target_date=target.isoformat(),
                               remind=bool(remind), created_at=iso(now))
         if remind:

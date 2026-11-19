@@ -32,6 +32,24 @@ function el(tag, props = {}, ...kids) {
 }
 
 /* ── list ──────────────────────────────────────────────────────────────── */
+/** "75% agree" - hidden until there is at least one vote. */
+function ratio(up, down) {
+  const s = el('span', { class: 'pred-ratio' });
+  setRatio(s, up, down);
+  return s;
+}
+
+function setRatio(s, up, down) {
+  const n = up + down;
+  s.hidden = n === 0;
+  if (!n) return;
+  const pct = Math.round((up / n) * 100);
+  s.textContent = `${pct}% agree`;
+  s.title = `${up} of ${n} ${n === 1 ? 'vote' : 'votes'} agree`;
+  s.classList.toggle('lean-up', pct >= 50);
+  s.classList.toggle('lean-down', pct < 50);
+}
+
 function card(p, { linked = false } = {}) {
   const head = el('div', { class: 'pred-meta' },
     el('span', { class: 'pred-handle', text: p.handle }),
@@ -51,7 +69,7 @@ function card(p, { linked = false } = {}) {
   }, el('span', { 'aria-hidden': 'true', text: value === 1 ? '👍' : '👎' }), el('span', { class: 'n', text: String(count) }));
 
   const foot = el('div', { class: 'pred-foot' },
-    thumb(1, 'Agree', p.up), thumb(-1, 'Disagree', p.down),
+    thumb(1, 'Agree', p.up), thumb(-1, 'Disagree', p.down), ratio(p.up, p.down),
     el('span', { class: 'pred-made', text: `made ${fmtDate(p.created)}` }),
     p.mine || p.hidden ? null : el('button', { type: 'button', class: 'linkish report', 'data-report': '1', text: 'Report' }),
   );
@@ -146,6 +164,8 @@ function paintVotes(li, d) {
     b.querySelector('.n').textContent = String(n);
     b.setAttribute('aria-label', `${v === 1 ? 'Agree' : 'Disagree'} (${n})`);
   });
+  const r = li.querySelector('.pred-ratio');
+  if (r) setRatio(r, d.up, d.down);
 }
 
 async function vote(li, value) {
@@ -230,6 +250,8 @@ function applyRules(rules) {
   date.max = rules.max_date;
   $('pred-text').maxLength = rules.max_chars;
   $('pred-remind-time').textContent = `${rules.reminder_time} IST`;
+  $('pred-per-day').textContent = rules.per_day === 1
+    ? 'One prediction a day, so make it count.' : `Up to ${rules.per_day} predictions a day.`;
   counter();
 }
 
